@@ -42,6 +42,7 @@ public:
     unsigned int id = _props.size();
     _prop_ids[prop] = id;
     _mats.push_back(mat);
+    _computed.push_back(false);
     _props.push_back(var);
     return id;
   }
@@ -50,6 +51,7 @@ public:
     unsigned int id = _props_vec.size();
     _prop_ids[prop] = id;
     _mats_vec.push_back(mat);
+    _computed_vec.push_back(false);
     _props_vec.push_back(var);
     return id;
   }
@@ -63,13 +65,17 @@ public:
 
   double getMatProp(unsigned int prop, const Location& loc)
   {
-    _mats[prop]->compute(loc);
+    if (!_computed[prop])
+      _mats[prop]->compute(loc);
+    _computed[prop] = true;
     return *_props[prop];
   }
 
   std::vector<double>& getMatPropVec(unsigned int prop, const Location& loc)
   {
-    _mats_vec[prop]->compute(loc);
+    if (!_computed_vec[prop])
+      _mats_vec[prop]->compute(loc);
+    _computed_vec[prop] = true;
     return *_props_vec[prop];
   }
 
@@ -89,7 +95,10 @@ public:
     return getMatPropVec(_prop_ids[prop], loc);
   }
 
-  void clearCache() {
+  void clearCache()
+  {
+    _computed.resize(0);
+    _computed_vec.resize(0);
   }
 
 private:
@@ -97,9 +106,17 @@ private:
 
   std::vector<Material*> _mats;
   std::vector<Material*> _mats_vec;
+  std::vector<bool> _computed;
+  std::vector<bool> _computed_vec;
 
   std::vector<double*> _props;
   std::vector<std::vector<double>*> _props_vec;
+};
+
+class MeshStore
+{
+public:
+
 };
 
 class FEProblem
@@ -168,12 +185,12 @@ main(int argc, char** argv)
   for (int t = 0; t < n_steps; t++)
   {
     std::cout << "step " << t+1 << std::endl;
-    fep.clearCache();
-    for (int i = 0; i < n_quad_points; i++)
+    for (int rep = 0; rep < n_repeat_calcs; rep++)
     {
-      for (auto & prop : prop_ids)
+      for (int i = 0; i < n_quad_points; i++)
       {
-        for (int rep = 0; rep < n_repeat_calcs; rep++)
+        fep.clearCache();
+        for (auto & prop : prop_ids)
           fep.getMatProp(prop, Location(i));
       }
     }
