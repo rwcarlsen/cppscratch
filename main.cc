@@ -113,10 +113,25 @@ private:
   std::vector<std::vector<double>*> _props_vec;
 };
 
+template <typename T>
 class MeshStore
 {
 public:
+  MeshStore(T& var) : _var(var) { }
 
+  void store(const Location& loc)
+  {
+    auto & vec = _data[loc.elem()];
+    if (vec.size() <= loc.qp())
+      vec.resize(loc.qp() + 1);
+    vec[loc.qp()] = _var;
+  }
+
+  T retrieve(const Location& loc) { return _data[loc.elem()][loc.qp()]; }
+
+private:
+  T& _var;
+  std::map<Elem*, std::vector<T>> _data;
 };
 
 class FEProblem
@@ -141,7 +156,7 @@ private:
 class MyMat : public Material
 {
 public:
-  MyMat(FEProblem& fep, std::string name, std::vector<std::string> props)
+  MyMat(FEProblem& fep, std::string name, std::vector<std::string> props) : _old_vars(_var)
   {
     for (auto& prop : props)
     {
@@ -154,9 +169,11 @@ public:
   {
     for (int i = 0; i < _var.size(); i++)
       _var[i] = i*100000+loc.qp();
+    _old_vars.store(loc); //
   }
 private:
   std::vector<double> _var;
+  MeshStore<std::vector<double>> _old_vars;
 };
 
 int
