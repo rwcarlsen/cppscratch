@@ -79,9 +79,12 @@ public:
 
   void clearCache()
   {
-    _computed.resize(0);
-    _computed_vec.resize(0);
-    _computed_other.resize(0);
+    for (int i = 0; i < _computed.size(); i++)
+      _computed[i] = false;
+    for (int i = 0; i < _computed_vec.size(); i++)
+      _computed_vec[i] = false;
+    for (int i = 0; i < _computed_other.size(); i++)
+      _computed_other[i] = false;
   }
 
 private:
@@ -163,15 +166,32 @@ template <typename T>
 class MeshStore
 {
 public:
-  void store(const Location& loc, const std::string prop)
+  void storeProp(const Location& loc, const std::string& prop)
   {
-    auto & vec = _data[loc.elem()];
-    if (vec.size() <= loc.qp())
-      vec.resize(loc.qp() + 1);
-    vec[loc.qp()] = loc.fep().getMatProp<T>(prop, loc);
+    resize(loc)[loc.qp()] = loc.fep().getMatProp<T>(prop, loc);
   }
 
-  T retrieve(const Location& loc) { return _data[loc.elem()][loc.qp()]; }
+  void store(const Location& loc, MeshStore<T>& other)
+  {
+    resize(loc)[loc.qp()] = other.retrieve(loc);
+  }
+
+  void store(const Location& loc, T val)
+  {
+    resize(loc)[loc.qp()] = val;
+  }
+
+  T retrieve(const Location& loc) {
+    return resize(loc)[loc.qp()];
+  }
+
+  std::vector<T>& resize(const Location& loc)
+  {
+    auto& vec = _data[loc.elem()];
+    if (vec.size() <= loc.qp())
+      vec.resize(loc.qp() + 1);
+    return vec;
+  }
 
 private:
   std::map<Elem*, std::vector<T>> _data;
@@ -187,8 +207,9 @@ public:
 
   virtual void compute(const Location& loc) override
   {
-    _prop = _old_vars.retrieve(loc);
-    _old_vars.store(loc, _old_dep_prop); //
+    _prop = _older_vars.retrieve(loc);
+    _older_vars.store(loc, _old_vars);
+    _old_vars.storeProp(loc, _old_dep_prop);
   }
 
 private:
@@ -196,6 +217,7 @@ private:
   double _prop;
   std::string _old_dep_prop;
   MeshStore<double> _old_vars;
+  MeshStore<double> _older_vars;
 };
 
 class MyMat : public Material
@@ -205,7 +227,7 @@ public:
   {
     for (auto& prop : props)
     {
-      _var.push_back(0);
+      _var.push_back((_var.size()+1)*100000);
       fep.registerMatProp(this, &_var.back(), name + "-" + prop);
     }
   }
@@ -213,14 +235,13 @@ public:
   virtual void compute(const Location& loc) override
   {
     for (int i = 0; i < _var.size(); i++)
-      _var[i] = i*100000+loc.qp();
+      _var[i] += loc.qp();
   }
 private:
   std::vector<double> _var;
 };
 
-int
-main(int argc, char** argv)
+void scalingStudy()
 {
   unsigned int props_per_mat = 10;
   unsigned int n_mats = 10;
@@ -249,20 +270,34 @@ main(int argc, char** argv)
     {
       for (int i = 0; i < n_quad_points; i++)
       {
-        fep.clearCache();
+        fep.clearCache(); // must be cleared before looping over properties and inside quad points
         for (auto & prop : prop_ids)
           fep.getMatProp<double>(prop, Location(fep, i));
       }
     }
   }
+};
 
+int
+main(int argc, char** argv)
+{
+  //scalingStudy();
+
+  FEProblem fep;
+  MyMat mat(fep, "mymat", {"prop1", "prop7"});
+  MyDepOldMat matdepold(fep, "mymatdepold", "mymat-prop7");
+
+  std::cout << fep.getMatProp<double>("mymat-prop1", Location(fep, 1)) << std::endl;
+  std::cout << fep.getMatProp<double>("mymat-prop1", Location(fep, 2)) << std::endl;
+  std::cout << fep.getMatProp<double>("mymat-prop7", Location(fep, 2)) << std::endl;
+
+  std::cout << "printing older props:\n";
+  Location loc(fep, 1);
+  for (int i = 0; i < 8; i++)
   {
-    FEProblem fep;
-    MyMat mat(fep, "mymat", {"prop1", "prop7"});
-
-    std::cout << fep.getMatProp<double>("mymat-prop1", Location(fep, 1)) << std::endl;
-    std::cout << fep.getMatProp<double>("mymat-prop1", Location(fep, 2)) << std::endl;
-    std::cout << fep.getMatProp<double>("mymat-prop7", Location(fep, 2)) << std::endl;
+    fep.clearCache();
+    std::cout << "\nprop7=" << fep.getMatProp<double>("mymat-prop7", loc) << std::endl;
+    std::cout << "    olderprop=" << fep.getMatProp<double>("mymatdepold", loc) << std::endl;
   }
 
   return 0;
