@@ -14,16 +14,20 @@ public:
 typedef unsigned int Elem;
 typedef unsigned int Node;
 
+class FEProblem;
+
 class Location
 {
 public:
-  Location(unsigned int qp) : _qp(qp) { }
+  Location(FEProblem& fep, unsigned int qp) : _qp(qp), _fep(fep) { }
   unsigned int qp() const {return _qp;}
   Point point() const {return {1, 2, 5};}
   Elem* elem() const {return nullptr;}
   Node* node() const {return nullptr;}
+  FEProblem& fep() const {return _fep;}
 private:
   unsigned int _qp;
+  FEProblem& _fep;
 };
 
 class Material
@@ -38,24 +42,6 @@ public:
 class MatPropStore
 {
 public:
-  unsigned int registerMatProp(Material* mat, double* var, const std::string& prop) {
-    unsigned int id = _props.size();
-    _prop_ids[prop] = id;
-    _mats.push_back(mat);
-    _computed.push_back(false);
-    _props.push_back(var);
-    return id;
-  }
-
-  unsigned int registerMatPropVec(Material* mat, std::vector<double>* var, const std::string& prop) {
-    unsigned int id = _props_vec.size();
-    _prop_ids[prop] = id;
-    _mats_vec.push_back(mat);
-    _computed_vec.push_back(false);
-    _props_vec.push_back(var);
-    return id;
-  }
-
   inline unsigned int prop_id(const std::string& prop)
   {
     if (_prop_ids.count(prop) == 0)
@@ -63,42 +49,39 @@ public:
     return _prop_ids[prop];
   }
 
-  double getMatProp(unsigned int prop, const Location& loc)
-  {
-    if (!_computed[prop])
-      _mats[prop]->compute(loc);
-    _computed[prop] = true;
-    return *_props[prop];
+  template <typename T>
+  unsigned int registerProp(Material* mat, T* var, const std::string& prop) {
+    unsigned int id = _props_other.size();
+    _prop_ids[prop] = id;
+    _mats_other.push_back(mat);
+    _computed_other.push_back(false);
+    _props_other.push_back(var);
+    return id;
   }
 
-  std::vector<double>& getMatPropVec(unsigned int prop, const Location& loc)
+  template <typename T>
+  T getProp(unsigned int prop, const Location& loc)
   {
-    if (!_computed_vec[prop])
-      _mats_vec[prop]->compute(loc);
-    _computed_vec[prop] = true;
-    return *_props_vec[prop];
+    if (_computed_other[prop])
+      return *dynamic_cast<T*>(_props_other[prop]);
+    _mats_other[prop]->compute(loc);
+    _computed_other[prop] = true;
+    return *dynamic_cast<T*>(_props_other[prop]);
   }
 
-  inline double getMatProp(const std::string& prop, const Location& loc)
+  template <typename T>
+  inline double getProp(const std::string& prop, const Location& loc)
   {
     if (_prop_ids.count(prop) == 0 || _props.size()-1 < _prop_ids[prop])
-    {
       throw std::runtime_error("material property " + prop + " doesn't exist");
-    }
-    return getMatProp(_prop_ids[prop], loc);
-  }
-
-  inline std::vector<double>& getMatPropVec(const std::string& prop, const Location& loc)
-  {
-    if (_prop_ids.count(prop) == 0 || _props_vec.size()-1 < _prop_ids[prop])
-      throw std::runtime_error("material property " + prop + " doesn't exist");
-    return getMatPropVec(_prop_ids[prop], loc);
+    return getProp<T>(_prop_ids[prop], loc);
   }
 
   void clearCache()
   {
     _computed.resize(0);
     _computed_vec.resize(0);
+    _computed_other.resize(0);
   }
 
 private:
@@ -106,44 +89,67 @@ private:
 
   std::vector<Material*> _mats;
   std::vector<Material*> _mats_vec;
+  std::vector<Material*> _mats_other;
+
   std::vector<bool> _computed;
   std::vector<bool> _computed_vec;
+  std::vector<bool> _computed_other;
 
   std::vector<double*> _props;
   std::vector<std::vector<double>*> _props_vec;
+  std::vector<void*> _props_other;
 };
 
-template <typename T>
-class MeshStore
+template <>
+unsigned int MatPropStore::registerProp(Material* mat, double* var, const std::string& prop) {
+  unsigned int id = _props.size();
+  _prop_ids[prop] = id;
+  _mats.push_back(mat);
+  _computed.push_back(false);
+  _props.push_back(var);
+  return id;
+}
+
+template <>
+unsigned int MatPropStore::registerProp(Material* mat, std::vector<double>* var, const std::string& prop) {
+  unsigned int id = _props_vec.size();
+  _prop_ids[prop] = id;
+  _mats_vec.push_back(mat);
+  _computed_vec.push_back(false);
+  _props_vec.push_back(var);
+  return id;
+}
+
+template <>
+double MatPropStore::getProp(unsigned int prop, const Location& loc)
 {
-public:
-  MeshStore(T& var) : _var(var) { }
+  if (_computed[prop])
+    return *_props[prop];
+  _mats[prop]->compute(loc);
+  _computed[prop] = true;
+  return *_props[prop];
+}
 
-  void store(const Location& loc)
-  {
-    auto & vec = _data[loc.elem()];
-    if (vec.size() <= loc.qp())
-      vec.resize(loc.qp() + 1);
-    vec[loc.qp()] = _var;
-  }
-
-  T retrieve(const Location& loc) { return _data[loc.elem()][loc.qp()]; }
-
-private:
-  T& _var;
-  std::map<Elem*, std::vector<T>> _data;
-};
+template <>
+std::vector<double>& MatPropStore::getProp(unsigned int prop, const Location& loc)
+{
+  if (_computed_vec[prop])
+    return *_props_vec[prop];
+  _mats_vec[prop]->compute(loc);
+  _computed_vec[prop] = true;
+  return *_props_vec[prop];
+}
 
 class FEProblem
 {
 public:
-  inline void registerMatProp(Material* mat, double* var, const std::string& prop) { _propstore.registerMatProp(mat, var, prop); }
-  inline void registerMatPropVec(Material* mat, std::vector<double>* var, const std::string& prop) { _propstore.registerMatPropVec(mat, var, prop); }
+  template <typename T>
+  inline void registerMatProp(Material* mat, T* var, const std::string& prop) { _propstore.registerProp<T>(mat, var, prop); }
 
-  inline double getMatProp(const std::string& prop, const Location& loc) {return _propstore.getMatProp(prop, loc);}
-  inline std::vector<double> getMatPropVec(const std::string& prop, const Location& loc) {return _propstore.getMatPropVec(prop, loc);}
-  inline double getMatProp(unsigned int prop, const Location& loc) {return _propstore.getMatProp(prop, loc);}
-  inline std::vector<double> getMatPropVec(unsigned int prop, const Location& loc) {return _propstore.getMatPropVec(prop, loc);}
+  template <typename T>
+  inline T getMatProp(const std::string& prop, const Location& loc) {return _propstore.getProp<T>(prop, loc);}
+  template <typename T>
+  inline T getMatProp(unsigned int prop, const Location& loc) {return _propstore.getProp<T>(prop, loc);}
 
   inline void clearCache() { _propstore.clearCache(); }
 
@@ -153,10 +159,49 @@ private:
   MatPropStore _propstore;
 };
 
+template <typename T>
+class MeshStore
+{
+public:
+  void store(const Location& loc, const std::string prop)
+  {
+    auto & vec = _data[loc.elem()];
+    if (vec.size() <= loc.qp())
+      vec.resize(loc.qp() + 1);
+    vec[loc.qp()] = loc.fep().getMatProp<T>(prop, loc);
+  }
+
+  T retrieve(const Location& loc) { return _data[loc.elem()][loc.qp()]; }
+
+private:
+  std::map<Elem*, std::vector<T>> _data;
+};
+
+class MyDepOldMat : public Material
+{
+public:
+  MyDepOldMat(FEProblem& fep, std::string prop, std::string old_dep_prop) : _fep(fep), _old_dep_prop(old_dep_prop)
+  {
+    fep.registerMatProp(this, &_prop, prop);
+  }
+
+  virtual void compute(const Location& loc) override
+  {
+    _prop = _old_vars.retrieve(loc);
+    _old_vars.store(loc, _old_dep_prop); //
+  }
+
+private:
+  FEProblem& _fep;
+  double _prop;
+  std::string _old_dep_prop;
+  MeshStore<double> _old_vars;
+};
+
 class MyMat : public Material
 {
 public:
-  MyMat(FEProblem& fep, std::string name, std::vector<std::string> props) : _old_vars(_var)
+  MyMat(FEProblem& fep, std::string name, std::vector<std::string> props)
   {
     for (auto& prop : props)
     {
@@ -169,11 +214,9 @@ public:
   {
     for (int i = 0; i < _var.size(); i++)
       _var[i] = i*100000+loc.qp();
-    _old_vars.store(loc); //
   }
 private:
   std::vector<double> _var;
-  MeshStore<std::vector<double>> _old_vars;
 };
 
 int
@@ -208,7 +251,7 @@ main(int argc, char** argv)
       {
         fep.clearCache();
         for (auto & prop : prop_ids)
-          fep.getMatProp(prop, Location(i));
+          fep.getMatProp<double>(prop, Location(fep, i));
       }
     }
   }
@@ -217,9 +260,9 @@ main(int argc, char** argv)
     FEProblem fep;
     MyMat mat(fep, "mymat", {"prop1", "prop7"});
 
-    std::cout << fep.getMatProp("mymat-prop1", Location(1)) << std::endl;
-    std::cout << fep.getMatProp("mymat-prop1", Location(2)) << std::endl;
-    std::cout << fep.getMatProp("mymat-prop7", Location(2)) << std::endl;
+    std::cout << fep.getMatProp<double>("mymat-prop1", Location(fep, 1)) << std::endl;
+    std::cout << fep.getMatProp<double>("mymat-prop1", Location(fep, 2)) << std::endl;
+    std::cout << fep.getMatProp<double>("mymat-prop7", Location(fep, 2)) << std::endl;
   }
 
   return 0;
