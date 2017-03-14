@@ -23,3 +23,9 @@ current redesign notes:
 * A single stateful property used by multiple sources is stored multiple
   times.  Not sure how important it is to not do this.  We could change it.
 
+Abstract Requirements:
+
+* Calculate+store+retrieve arbitrary c++ typed data at each quadrature point on mesh
+* Must be fast
+* Want explicit calculation upon request of datum
+
