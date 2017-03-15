@@ -41,7 +41,7 @@ public:
 class QpStore
 {
 public:
-  QpStore(bool cycle_detection = false) : _cycle_detection(cycle_detection) { };
+  QpStore(bool errcheck = false) : _errcheck(errcheck) { };
 
   inline unsigned int id(const std::string& name)
   {
@@ -64,7 +64,6 @@ public:
   template <typename T>
   inline void checkType(unsigned int id)
   {
-    auto t = typeid(T).hash_code();
     if (typeid(T).hash_code() != _types[id])
       throw std::runtime_error("wrong type requested: " + _type_names[id] + " != " + typeid(T).name());
   }
@@ -73,17 +72,18 @@ public:
   template <typename T>
   T value(unsigned int id, const Location& loc)
   {
-    if (_cycle_detection)
+    if (_errcheck)
     {
       if (_cycle_stack.count(id) > 0)
         throw std::runtime_error("cyclical value dependency detected");
       _cycle_stack[id] = true;
+      checkType<T>(id);
     }
 
-    checkType<T>(id);
     auto val = static_cast<QpValuer<T>*>(_valuers[id])->value(loc);
-    stageOldVal(id, loc, val);
-    if (_cycle_detection)
+    if (_want_old[id])
+      stageOldVal(id, loc, val);
+    if (_errcheck)
       _cycle_stack.erase(id);
     return val;
   }
@@ -94,16 +94,18 @@ public:
   template <typename T>
   T oldValue(unsigned int id, const Location& loc)
   {
-    if (_cycle_detection)
+    if (_errcheck)
+    {
       _cycle_stack.clear();
+      checkType<T>(id);
+    }
 
-    checkType<T>(id);
     if (_old_vals[id][loc.elem()].size() >= loc.qp()+1)
       return *static_cast<T*>(_old_vals[id][loc.elem()][loc.qp()]);
 
     _want_old[id] = true;
     T val{};
-    stageOldVal(id, loc, val);
+    stageOldVal(id, loc, T{});
     return val;
   }
 
@@ -116,8 +118,6 @@ private:
   template <typename T>
   void stageOldVal(unsigned int id, const Location & loc, const T & val)
   {
-    if (!_want_old[id])
-      return;
     auto & vec = _curr_vals[id][loc.elem()];
     vec.resize(loc.nqp(), nullptr);
     if (vec[loc.qp()] != nullptr)
@@ -135,7 +135,7 @@ private:
   std::map<unsigned int, std::map<Elem*, std::vector<void*>>> _curr_vals;
   std::map<unsigned int, std::map<Elem*, std::vector<void*>>> _old_vals;
 
-  bool _cycle_detection;
+  bool _errcheck;
   std::map<unsigned int, bool> _cycle_stack;
 };
 
@@ -311,7 +311,7 @@ basicPrintoutTest()
 
 void wrongTypeTest()
 {
-  FEProblem fep;
+  FEProblem fep(true);
   MyMat mat(fep, "mymat", {"prop1", "prop7"});
   // throw error - wrong type.
   try {
@@ -346,10 +346,10 @@ void cyclicalDepTest()
 int
 main(int argc, char** argv)
 {
-  //scalingStudy();
-  basicPrintoutTest();
-  wrongTypeTest();
-  cyclicalDepTest();
+  scalingStudy();
+  //basicPrintoutTest();
+  //wrongTypeTest();
+  //cyclicalDepTest();
 
   //FEProblem fep;
   //MyMat mat(fep, "mymat", {"prop1", "prop7"});
