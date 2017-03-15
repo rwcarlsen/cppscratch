@@ -19,13 +19,15 @@ class FEProblem;
 class Location
 {
 public:
-  Location(FEProblem& fep, unsigned int qp) : _qp(qp), _fep(fep) { }
+  Location(FEProblem& fep, unsigned int nqp, unsigned int qp) : _nqp(nqp), _qp(qp), _fep(fep) { }
   unsigned int qp() const {return _qp;}
+  unsigned int nqp() const {return _nqp;}
   Point point() const {return {1, 2, 5};}
   Elem* elem() const {return nullptr;}
   Node* node() const {return nullptr;}
   FEProblem& fep() const {return _fep;}
 private:
+  unsigned int _nqp;
   unsigned int _qp;
   FEProblem& _fep;
 };
@@ -51,13 +53,16 @@ public:
     unsigned int id = _valuers.size();
     _ids[name] = id;
     _valuers.push_back(q);
+    _want_old.push_back(false);
     return id;
   }
 
   template <typename T>
-  T value(unsigned int name, const Location& loc)
+  T value(unsigned int id, const Location& loc)
   {
-    return static_cast<QpValuer<T>*>(_valuers[name])->value(loc);
+    auto val = static_cast<QpValuer<T>*>(_valuers[id])->value(loc);
+    stageOldVal(id, loc, val);
+    return val;
   }
 
   template <typename T>
@@ -66,23 +71,66 @@ public:
     return value<T>(id(name), loc);
   }
 
+  template <typename T>
+  T oldValue(unsigned int id, const Location& loc)
+  {
+    if (_old_vals[id][loc.elem()].size() >= loc.qp()+1)
+      return *static_cast<T*>(_old_vals[id][loc.elem()][loc.qp()]);
+
+    _want_old[id] = true;
+    T val{};
+    stageOldVal(id, loc, val);
+    return val;
+  }
+
+  template <typename T>
+  T oldValue(const std::string& name, const Location& loc)
+  {
+    return oldValue<T>(id(name), loc);
+  }
+
+  void shift() { _old_vals.swap(_curr_vals); }
+
 private:
+  template <typename T>
+  void stageOldVal(unsigned int id, const Location & loc, const T & val)
+  {
+    if (!_want_old[id])
+      return;
+    auto & vec = _curr_vals[id][loc.elem()];
+    vec.resize(loc.nqp(), nullptr);
+    if (vec[loc.qp()] != nullptr)
+      delete static_cast<T*>(vec[loc.qp()]);
+    vec[loc.qp()] = new T(val);
+  }
+
   std::map<std::string, unsigned int> _ids;
   std::vector<void*> _valuers;
+  std::vector<bool> _want_old;
+  // map<value_id, map<elem, map<quad-point, val>>>
+  std::map<unsigned int, std::map<Elem*, std::vector<void*>>> _curr_vals;
+  std::map<unsigned int, std::map<Elem*, std::vector<void*>>> _old_vals;
 };
 
 class FEProblem
 {
 public:
   template <typename T>
-  inline void registerProp(QpValuer<T>* v, const std::string& prop) { _propstore.registerValue<T>(v, prop); }
+  inline unsigned int registerProp(QpValuer<T>* v, const std::string& prop) { return _propstore.registerValue<T>(v, prop); }
 
   template <typename T>
   inline T getProp(const std::string& name, const Location& loc) {return _propstore.value<T>(name, loc);}
   template <typename T>
   inline T getProp(unsigned int prop, const Location& loc) {return _propstore.value<T>(prop, loc);}
 
+  template <typename T>
+  inline T getPropOld(const std::string& name, const Location& loc) {return _propstore.oldValue<T>(name, loc);}
+  template <typename T>
+  inline T getPropOld(unsigned int prop, const Location& loc) {return _propstore.oldValue<T>(prop, loc);}
+
   inline unsigned int prop_id(const std::string& name) { return _propstore.id(name); }
+
+  void shift() {_propstore.shift();}
 
 private:
   QpStore _propstore;
@@ -132,6 +180,14 @@ private:
   double _val;
 };
 
+class IncrementQpValuer : public QpValuer<double>
+{
+public:
+  virtual double value(const Location & loc) override { return _next++;}
+private:
+  int _next = 0;
+};
+
 class MyMat
 {
 public:
@@ -177,7 +233,7 @@ void scalingStudy()
       for (int i = 0; i < n_quad_points; i++)
       {
         for (auto & prop : prop_ids)
-          fep.getProp<double>(prop, Location(fep, i));
+          fep.getProp<double>(prop, Location(fep, n_quad_points, i));
       }
     }
   }
@@ -189,9 +245,29 @@ basicPrintoutTest()
   FEProblem fep;
   MyMat mat(fep, "mymat", {"prop1", "prop7"});
 
-  std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 1)) << std::endl;
-  std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 2)) << std::endl;
-  std::cout << fep.getProp<double>("mymat-prop7", Location(fep, 2)) << std::endl;
+  std::cout << "mymat-prop1=" << fep.getProp<double>("mymat-prop1", Location(fep, 3, 1)) << std::endl;
+  std::cout << "mymat-prop1=" << fep.getProp<double>("mymat-prop1", Location(fep, 3, 2)) << std::endl;
+  std::cout << "mymat-prop7=" << fep.getProp<double>("mymat-prop7", Location(fep, 3, 2)) << std::endl;
+
+  IncrementQpValuer iq;
+  auto id = fep.registerProp(&iq, "inc-qp");
+
+  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "--- shift\n";
+  fep.shift();
+  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "--- shift\n";
+  fep.shift();
+  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "--- shift\n";
+  fep.shift();
+  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
 }
 
 int
@@ -204,9 +280,9 @@ main(int argc, char** argv)
   //MyMat mat(fep, "mymat", {"prop1", "prop7"});
   //MyDepOldMat matdepold(fep, "mymatdepold", "mymat-prop7");
 
-  //std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 1)) << std::endl;
-  //std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 2)) << std::endl;
-  //std::cout << fep.getProp<double>("mymat-prop7", Location(fep, 2)) << std::endl;
+  //std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 1)) << std::endl;
+  //std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 2)) << std::endl;
+  //std::cout << fep.getProp<double>("mymat-prop7", Location(fep, 3, 2)) << std::endl;
 
   //std::cout << "printing older props:\n";
   //Location loc(fep, 1);
