@@ -1,9 +1,14 @@
 
-* Material (props) must be block/boundary restrictable
+* Material (props) must be block/boundary restrictable.  This is automagically
+  handled by using the QpValuer inner class and implicit/direct dependency
+  resolution.  Materials will just never be called for areas where they are not needed.
+
 * Must handle mesh refinement/projection
 * handle restart/recovery
 * handle initial conditions
-* [pseudo-done] handle stateful materials
+* Handle stateful materials. Done.
+* Error on cyclical dependencies
+* Error on wrong cpptype prop id requests.
 
 current redesign notes:
 

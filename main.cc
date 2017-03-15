@@ -41,10 +41,12 @@ public:
 class QpStore
 {
 public:
+  QpStore(bool cycle_detection = false) : _cycle_detection(cycle_detection) { };
+
   inline unsigned int id(const std::string& name)
   {
     if (_ids.count(name) == 0)
-      throw std::runtime_error("material property " + name + " doesn't exist");
+      throw std::runtime_error("value " + name + " doesn't exist");
     return _ids[name];
   }
 
@@ -54,26 +56,48 @@ public:
     _ids[name] = id;
     _valuers.push_back(q);
     _want_old.push_back(false);
+    _types.push_back(typeid(T).hash_code());
+    _type_names.push_back(typeid(T).name());
     return id;
   }
 
   template <typename T>
+  inline void checkType(unsigned int id)
+  {
+    auto t = typeid(T).hash_code();
+    if (typeid(T).hash_code() != _types[id])
+      throw std::runtime_error("wrong type requested: " + _type_names[id] + " != " + typeid(T).name());
+  }
+
+
+  template <typename T>
   T value(unsigned int id, const Location& loc)
   {
+    if (_cycle_detection)
+    {
+      if (_cycle_stack.count(id) > 0)
+        throw std::runtime_error("cyclical value dependency detected");
+      _cycle_stack[id] = true;
+    }
+
+    checkType<T>(id);
     auto val = static_cast<QpValuer<T>*>(_valuers[id])->value(loc);
     stageOldVal(id, loc, val);
+    if (_cycle_detection)
+      _cycle_stack.erase(id);
     return val;
   }
 
   template <typename T>
-  inline double value(const std::string& name, const Location& loc)
-  {
-    return value<T>(id(name), loc);
-  }
+  inline double value(const std::string& name, const Location& loc) { return value<T>(id(name), loc); }
 
   template <typename T>
   T oldValue(unsigned int id, const Location& loc)
   {
+    if (_cycle_detection)
+      _cycle_stack.clear();
+
+    checkType<T>(id);
     if (_old_vals[id][loc.elem()].size() >= loc.qp()+1)
       return *static_cast<T*>(_old_vals[id][loc.elem()][loc.qp()]);
 
@@ -84,10 +108,7 @@ public:
   }
 
   template <typename T>
-  T oldValue(const std::string& name, const Location& loc)
-  {
-    return oldValue<T>(id(name), loc);
-  }
+  T oldValue(const std::string& name, const Location& loc) { return oldValue<T>(id(name), loc); }
 
   void shift() { _old_vals.swap(_curr_vals); }
 
@@ -107,14 +128,22 @@ private:
   std::map<std::string, unsigned int> _ids;
   std::vector<void*> _valuers;
   std::vector<bool> _want_old;
+  std::vector<size_t> _types;
+  std::vector<std::string> _type_names;
+
   // map<value_id, map<elem, map<quad-point, val>>>
   std::map<unsigned int, std::map<Elem*, std::vector<void*>>> _curr_vals;
   std::map<unsigned int, std::map<Elem*, std::vector<void*>>> _old_vals;
+
+  bool _cycle_detection;
+  std::map<unsigned int, bool> _cycle_stack;
 };
 
 class FEProblem
 {
 public:
+  FEProblem(bool cyclical_detection = false) : _propstore(cyclical_detection) {}
+
   template <typename T>
   inline unsigned int registerProp(QpValuer<T>* v, const std::string& prop) { return _propstore.registerValue<T>(v, prop); }
 
@@ -186,6 +215,16 @@ public:
   virtual double value(const Location & loc) override { return _next++;}
 private:
   int _next = 0;
+};
+
+class DepQpValuer : public QpValuer<double>
+{
+public:
+  DepQpValuer(double toadd, const std::string & dep) : _toadd(toadd), _dep(dep) { }
+  virtual double value(const Location & loc) override {return loc.fep().getProp<double>(_dep, loc) + _toadd;}
+private:
+  double _toadd;
+  std::string _dep;
 };
 
 class MyMat
@@ -270,11 +309,47 @@ basicPrintoutTest()
   std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
 }
 
+void wrongTypeTest()
+{
+  FEProblem fep;
+  MyMat mat(fep, "mymat", {"prop1", "prop7"});
+  // throw error - wrong type.
+  try {
+    fep.getProp<int>("mymat-prop1", Location(fep, 0, 1));
+  } catch (std::runtime_error err) {
+    std::cout << err.what() << std::endl;
+    return;
+  }
+  std::cout << "wrongTypeTest FAIL\n";
+}
+
+void cyclicalDepTest()
+{
+  FEProblem fep(true);
+  DepQpValuer dq1(1, "dep2");
+  DepQpValuer dq2(1, "dep3");
+  DepQpValuer dq3(1, "dep1");
+  auto id1 = fep.registerProp(&dq1, "dep1");
+  auto id2 = fep.registerProp(&dq2, "dep2");
+  auto id3 = fep.registerProp(&dq3, "dep3");
+
+  // throw error - cyclical dependency
+  try {
+    fep.getProp<double>(id1, Location(fep, 0, 1));
+  } catch (std::runtime_error err) {
+    std::cout << err.what() << std::endl;
+    return;
+  }
+  std::cout << "cyclicalDepTest FAIL\n";
+}
+
 int
 main(int argc, char** argv)
 {
   //scalingStudy();
   basicPrintoutTest();
+  wrongTypeTest();
+  cyclicalDepTest();
 
   //FEProblem fep;
   //MyMat mat(fep, "mymat", {"prop1", "prop7"});
