@@ -97,6 +97,11 @@ class QpStore {
         if (_old_vals[id][loc.elem()].size() >= loc.qp() + 1)
             return *static_cast<T *>(_old_vals[id][loc.elem()][loc.qp()]);
 
+        // TODO: check if old value exists for a parent of loc.elem() - this
+        // happens when the mesh was refined and new elements were created.
+        // read the old value stored for the parent element and store it in
+        // _old_vals under the ids for the child element+qps.
+
         _want_old[id] = true;
         T val{};
         stageOldVal(id, loc, T{});
