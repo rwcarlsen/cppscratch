@@ -19,7 +19,7 @@ public:
   Element(unsigned int id) : _id(id), _parent_id(0) {}
   Element(unsigned int id, unsigned int parent_id) : _id(id), _parent_id(parent_id) {}
   inline unsigned int unique_id() { return _id; }
-  inline Element parent() { return Element(_parent_id); }
+  inline Element parent() const { return Element(_parent_id); }
 
 private:
   unsigned int _id;
@@ -35,18 +35,29 @@ public:
            unsigned int nqp,
            unsigned int qp,
            unsigned int elem = 1,
-           unsigned int parent_id = 0)
-    : _nqp(nqp), _qp(qp), _fep(fep), _elem(elem, parent_id)
+           unsigned int parent_id = 0,
+           unsigned int face_id = 0)
+    : _nqp(nqp), _qp(qp), _fep(fep), _elem(elem, parent_id), _elem_id(elem), _face_id(face_id)
   {
   }
   unsigned int qp() const { return _qp; }
   unsigned int nqp() const { return _nqp; }
   Point point() const { return {1, 2, 5}; }
   inline Element elem() const { return _elem; }
-  Node * node() const { return nullptr; }
+  unsigned int elem_id() const {return _elem_id;}
   FEProblem & fep() const { return _fep; }
+  inline Location parent_loc() const {Location loc(_fep, _nqp, _qp, _elem_id, _elem.parent().unique_id()); return loc;}
+
+  Node * node() const { return nullptr; }
+
+  friend bool operator<(const Location & lhs, const Location & rhs)
+  {
+    return lhs._elem_id < rhs._elem_id || lhs._face_id < rhs._face_id || lhs._qp < rhs._qp;
+  }
 
 private:
+  unsigned int _face_id;
+  unsigned int _elem_id;
   unsigned int _nqp;
   unsigned int _qp;
   FEProblem & _fep;
@@ -105,12 +116,7 @@ public:
 
     // mark this property as computed if we need its old value
     if (_want_old[id])
-    {
-      auto & vec = _prev_curr_vals[id][loc.elem().unique_id()];
-      if (vec.size() < loc.qp() + 1)
-        vec.resize(loc.nqp());
-      vec[loc.qp()] = true;
-    }
+      _prev_curr_vals[id][loc] = true;
 
     auto val = static_cast<QpValuer<T> *>(_valuers[id])->value(loc);
     if (_want_old[id])
@@ -138,41 +144,26 @@ public:
     if (!_want_old[id])
     {
       _want_old[id] = true;
-      _delete_funcs[id] = [this](std::vector<void *> & vec) {
-        auto & vvec = *reinterpret_cast < std::vector<T *> *> (&vec);
-        for (int i = 0; i < vvec.size(); i++)
-          delete static_cast<T *>(vvec[i]);
-      };
+      _delete_funcs[id] = [](void * val) { delete reinterpret_cast<T *>(&val); };
     }
 
     // force computation of current value in preparation for next old value if there was no other
     // explicit calls to value for this property/location combo.
-    auto & vec = _prev_curr_vals[id][loc.elem().unique_id()];
-    if (vec.size() < loc.qp() + 1 || !vec[loc.qp()])
+    if (!_prev_curr_vals[id][loc])
     {
       value<T>(id, loc);
       // reset to false because above value<>(...) call sets it to true, but we only want it to be
       // true if value is called by someone else.
-      _prev_curr_vals[id][loc.elem().unique_id()][loc.qp()] = false;
+      _prev_curr_vals[id][loc] = false;
     }
 
-    if (_old_vals[id][loc.elem().unique_id()].size() >= loc.qp() + 1)
-      return *static_cast<T *>(_old_vals[id][loc.elem().unique_id()][loc.qp()]);
-
-    // The old value might exist for a parent of loc.elem() - this happens when the mesh was
-    // refined and new elements were created.  If so, read the old value stored for the parent
-    // element and store it under the id for the child element.
-    if (_old_vals[id][loc.elem().parent().unique_id()].size() >= loc.qp() + 1)
-    {
-      auto vals = _old_vals[id][loc.elem().parent().unique_id()];
-      _old_vals[id][loc.elem().unique_id()] = vals;
-      return *static_cast<T *>(vals[loc.qp()]);
-    }
+    if (_old_vals[id].count(loc) > 0)
+      return *static_cast<T *>(_old_vals[id][loc]);
 
     // There was no previous old value, so we use the zero/default value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
     T val{};
-    if (_curr_vals[id][loc.elem().unique_id()].size() >= loc.qp() + 1)
+    if (_curr_vals[id].count(loc) > 0 )
       stageOldVal(id, loc, val);
     return val;
   }
@@ -193,12 +184,10 @@ public:
     {
       for (auto loc : added_locations)
       {
-        if (_curr_vals[id][loc->elem().unique_id()].size() > 0)
-          _delete_funcs[id](_curr_vals[id][loc->elem().unique_id()]);
-        _curr_vals[id][loc->elem().unique_id()] = _curr_vals[id][loc->elem().parent().unique_id()];
+        _delete_funcs[id](_curr_vals[id][*loc]);
+        _curr_vals[id][*loc] = _curr_vals[id][loc->parent_loc()];
       }
     }
-
   }
 
   // Moves/stores computed current values (of child elements) to live under the ids of their newly
@@ -210,7 +199,7 @@ public:
     for (unsigned int id = 0; id < _valuers.size(); id++)
     {
       for (auto loc : removed_locations)
-        _curr_vals[id][loc->elem().parent().unique_id()] = _curr_vals[id][loc->elem().unique_id()];
+        _curr_vals[id][loc->parent_loc()] = _curr_vals[id][*loc];
     }
   }
 
@@ -225,11 +214,10 @@ private:
   template <typename T>
   void stageOldVal(unsigned int id, const Location & loc, const T & val)
   {
-    auto & vec = _curr_vals[id][loc.elem().unique_id()];
-    vec.resize(loc.nqp(), nullptr);
-    if (vec[loc.qp()] != nullptr)
-      delete static_cast<T *>(vec[loc.qp()]);
-    vec[loc.qp()] = new T(val);
+    auto prev = _curr_vals[id][loc];
+    if (prev != nullptr)
+      delete static_cast<T *>(prev);
+    _curr_vals[id][loc] = new T(val);
   }
 
   std::map<std::string, unsigned int> _ids;
@@ -239,10 +227,10 @@ private:
   std::vector<std::string> _type_names;
 
   // map<value_id, map<elem, map<quad-point, val>>>
-  std::map<unsigned int, std::map<unsigned int, std::vector<bool>>> _prev_curr_vals;
-  std::map<unsigned int, std::map<unsigned int, std::vector<void *>>> _curr_vals;
-  std::map<unsigned int, std::map<unsigned int, std::vector<void *>>> _old_vals;
-  std::map<unsigned int, std::function<void(std::vector<void *>&)>> _delete_funcs;
+  std::map<unsigned int, std::map<Location, bool>> _prev_curr_vals;
+  std::map<unsigned int, std::map<Location, void*>> _curr_vals;
+  std::map<unsigned int, std::map<Location, void*>> _old_vals;
+  std::map<unsigned int, std::function<void(void*)>> _delete_funcs;
 
   bool _errcheck;
   std::map<unsigned int, bool> _cycle_stack;
