@@ -48,20 +48,20 @@ public:
   FEProblem & fep() const { return _fep; }
   inline Location parent_loc() const {Location loc(_fep, _nqp, _qp, _elem_id, _elem.parent().unique_id()); return loc;}
 
-  Node * node() const { return nullptr; }
-
   friend bool operator<(const Location & lhs, const Location & rhs)
   {
     return lhs._elem_id < rhs._elem_id || lhs._face_id < rhs._face_id || lhs._qp < rhs._qp;
   }
 
 private:
-  unsigned int _face_id;
   unsigned int _elem_id;
-  unsigned int _nqp;
+  unsigned int _face_id;
   unsigned int _qp;
-  FEProblem & _fep;
+
+  unsigned int _nqp;
   Element _elem;
+
+  FEProblem & _fep;
 };
 
 template <typename T>
@@ -174,32 +174,22 @@ public:
     return oldValue<T>(id(name), loc);
   }
 
-  // Moves/stores computed current values (of parent element) to live under the ids of the newly
-  // created child elements.  This must be called after the mesh is refined, but before old values
-  // are used in the refined mesh.  i.e. call shift at the end of a step/iteration, refine the
-  // mesh, then call refine, then use old values.
-  void refine(std::vector<const Location*> added_locations)
+  // Projects/copies computed old values at the source locations to live under destination
+  // locations (mapped one to one in the ordered vectors).  When doing e.g. mesh adaptivity, call
+  // this to project values at old locations (srcs) to new locations (dsts) where they were never
+  // explicitly computed before.
+  void project(std::vector<const Location*> srcs, std::vector<const Location*> dsts)
   {
     for (unsigned int id = 0; id < _valuers.size(); id++)
     {
-      for (auto loc : added_locations)
+      for (int i = 0; i < srcs.size(); i++)
       {
-        _delete_funcs[id](_curr_vals[id][*loc]);
-        _curr_vals[id][*loc] = _curr_vals[id][loc->parent_loc()];
+        auto& src = *srcs[i];
+        auto& dst = *dsts[i];
+        _delete_funcs[id](_old_vals[id][dst]);
+        _old_vals[id][dst] = _old_vals[id][src];
+        _delete_funcs[id](_old_vals[id][src]);
       }
-    }
-  }
-
-  // Moves/stores computed current values (of child elements) to live under the ids of their newly
-  // activated parent elements.  This must be called after the mesh is coarsened, but before old
-  // values are used in the coarsened mesh.  i.e. call shift at the end of a step/iteration,
-  // coarsen the mesh, then call coarsen, then use old values.
-  void coarsen(std::vector<const Location*> removed_locations)
-  {
-    for (unsigned int id = 0; id < _valuers.size(); id++)
-    {
-      for (auto loc : removed_locations)
-        _curr_vals[id][loc->parent_loc()] = _curr_vals[id][*loc];
     }
   }
 
@@ -473,9 +463,9 @@ int
 main(int argc, char ** argv)
 {
   scalingStudy();
-  // basicPrintoutTest();
-  // wrongTypeTest();
-  // cyclicalDepTest();
+  basicPrintoutTest();
+  wrongTypeTest();
+  cyclicalDepTest();
 
   // FEProblem fep;
   // MyMat mat(fep, "mymat", {"prop1", "prop7"});
