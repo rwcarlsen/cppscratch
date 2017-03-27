@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <list>
 
 class Point
 {
@@ -46,7 +47,7 @@ public:
   inline Element elem() const { return Element(_elem_id, _elem_parent_id); }
   unsigned int elem_id() const {return _elem_id;}
   FEProblem & fep() const { return _fep; }
-  inline Location parent_loc() const
+  inline Location parent() const
   {
     return Location(_fep, _nqp, _qp, _elem_id, _elem_parent_id);
   }
@@ -76,7 +77,7 @@ public:
 class QpStore
 {
 public:
-  QpStore(bool errcheck = false) : _errcheck(errcheck){};
+  QpStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}) {};
 
   inline unsigned int id(const std::string & name)
   {
@@ -110,9 +111,9 @@ public:
   {
     if (_errcheck)
     {
-      if (_cycle_stack.count(id) > 0)
+      if (_cycle_stack.back().count(id) > 0)
         throw std::runtime_error("cyclical value dependency detected");
-      _cycle_stack[id] = true;
+      _cycle_stack.back()[id] = true;
       checkType<T>(id);
     }
 
@@ -124,7 +125,7 @@ public:
     if (_want_old[id])
       stageOldVal(id, loc, val);
     if (_errcheck)
-      _cycle_stack.erase(id);
+      _cycle_stack.back().erase(id);
     return val;
   }
 
@@ -139,7 +140,7 @@ public:
   {
     if (_errcheck)
     {
-      _cycle_stack.clear();
+      _cycle_stack.push_back({});
       checkType<T>(id);
     }
 
@@ -155,8 +156,10 @@ public:
     {
       value<T>(id, loc);
       // reset to false because above value<>(...) call sets it to true, but we only want it to be
-      // true if value is called by someone else.
+      // true if value is called by someone else (i.e. externally).
       _external_curr[id][loc] = false;
+      if (_errcheck)
+        _cycle_stack.pop_back();
     }
 
     if (_old_vals[id].count(loc) > 0)
@@ -241,9 +244,10 @@ private:
 
   // True to run error checking.
   bool _errcheck;
-  // map<value_id, true>. In sequences of values depending on other values, this trackes what
-  // values have been used enabling cyclical value dependency detection.
-  std::map<unsigned int, bool> _cycle_stack;
+  // list<map<value_id, true>>. In sequences of values depending on other values, this tracks what
+  // values have been used between dependency chains - enabling cyclical value dependency
+  // detection. oldValue retrieval breaks dependency chains.
+  std::list<std::map<unsigned int, bool>> _cycle_stack;
 };
 
 class FEProblem
@@ -285,36 +289,6 @@ public:
 
 private:
   QpStore _propstore;
-};
-
-template <typename T>
-class MeshStore
-{
-public:
-  void storeProp(const Location & loc, const std::string & prop)
-  {
-    resize(loc)[loc.qp()] = loc.fep().getProp<T>(prop, loc);
-  }
-
-  void store(const Location & loc, MeshStore<T> & other)
-  {
-    resize(loc)[loc.qp()] = other.retrieve(loc);
-  }
-
-  void store(const Location & loc, T val) { resize(loc)[loc.qp()] = val; }
-
-  T retrieve(const Location & loc) { return resize(loc)[loc.qp()]; }
-
-  std::vector<T> & resize(const Location & loc)
-  {
-    auto & vec = _data[loc.elem_id()];
-    if (vec.size() <= loc.qp())
-      vec.resize(loc.qp() + 1);
-    return vec;
-  }
-
-private:
-  std::map<Element *, std::vector<T>> _data;
 };
 
 class ConstQpValuer : public QpValuer<double>
