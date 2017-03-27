@@ -37,16 +37,19 @@ public:
            unsigned int elem = 1,
            unsigned int parent_id = 0,
            unsigned int face_id = 0)
-    : _nqp(nqp), _qp(qp), _fep(fep), _elem(elem, parent_id), _elem_id(elem), _face_id(face_id)
+    : _nqp(nqp), _qp(qp), _fep(fep), _elem_parent_id(parent_id), _elem_id(elem), _face_id(face_id)
   {
   }
   unsigned int qp() const { return _qp; }
   unsigned int nqp() const { return _nqp; }
   Point point() const { return {1, 2, 5}; }
-  inline Element elem() const { return _elem; }
+  inline Element elem() const { return Element(_elem_id, _elem_parent_id); }
   unsigned int elem_id() const {return _elem_id;}
   FEProblem & fep() const { return _fep; }
-  inline Location parent_loc() const {Location loc(_fep, _nqp, _qp, _elem_id, _elem.parent().unique_id()); return loc;}
+  inline Location parent_loc() const
+  {
+    return Location(_fep, _nqp, _qp, _elem_id, _elem_parent_id);
+  }
 
   friend bool operator<(const Location & lhs, const Location & rhs)
   {
@@ -55,12 +58,11 @@ public:
 
 private:
   unsigned int _elem_id;
+  unsigned int _elem_parent_id;
   unsigned int _face_id;
   unsigned int _qp;
 
   unsigned int _nqp;
-  Element _elem;
-
   FEProblem & _fep;
 };
 
@@ -177,7 +179,8 @@ public:
   // Projects/copies computed old values at the source locations to live under destination
   // locations (mapped one to one in the ordered vectors).  When doing e.g. mesh adaptivity, call
   // this to project values at old locations (srcs) to new locations (dsts) where they were never
-  // explicitly computed before.
+  // explicitly computed before.  This needs to be called *after* the call to shift and *before*
+  // calls to oldValue.
   void project(std::vector<const Location*> srcs, std::vector<const Location*> dsts)
   {
     for (unsigned int id = 0; id < _valuers.size(); id++)
@@ -193,10 +196,8 @@ public:
     }
   }
 
-  // Moves stored "current" values to "older" and
-  void shift() {
-    _old_vals.swap(_curr_vals);
-  }
+  // Moves stored "current" values to "older" values, discarding any previous "older" values.
+  void shift() { _old_vals.swap(_curr_vals); }
 
 private:
   // Stores/saves a computed value so it can be used as old next iteration/step (i.e. after shift
@@ -287,7 +288,7 @@ public:
 
   std::vector<T> & resize(const Location & loc)
   {
-    auto & vec = _data[loc.elem().unique_id()];
+    auto & vec = _data[loc.elem_id()];
     if (vec.size() <= loc.qp())
       vec.resize(loc.qp() + 1);
     return vec;
