@@ -118,7 +118,7 @@ public:
 
     // mark this property as computed if we need its old value
     if (_want_old[id])
-      _prev_curr_vals[id][loc] = true;
+      _external_curr[id][loc] = true;
 
     auto val = static_cast<QpValuer<T> *>(_valuers[id])->value(loc);
     if (_want_old[id])
@@ -151,12 +151,12 @@ public:
 
     // force computation of current value in preparation for next old value if there was no other
     // explicit calls to value for this property/location combo.
-    if (!_prev_curr_vals[id][loc])
+    if (!_external_curr[id][loc])
     {
       value<T>(id, loc);
       // reset to false because above value<>(...) call sets it to true, but we only want it to be
       // true if value is called by someone else.
-      _prev_curr_vals[id][loc] = false;
+      _external_curr[id][loc] = false;
     }
 
     if (_old_vals[id].count(loc) > 0)
@@ -211,19 +211,38 @@ private:
     _curr_vals[id][loc] = new T(val);
   }
 
+  // map<value_name, value_id>
   std::map<std::string, unsigned int> _ids;
+  // map<value_id, valuer>
   std::vector<void *> _valuers;
+  // map<value_id, want_old>. True if an old version of the value has (ever) been requested.
   std::vector<bool> _want_old;
+  // map<value_id, type_id> Stores a unique type id corresponding to each value.  Used for error
+  // checking.
   std::vector<size_t> _types;
+  // map<value_id, value_name>
   std::vector<std::string> _type_names;
 
-  // map<value_id, map<elem, map<quad-point, val>>>
-  std::map<unsigned int, std::map<Location, bool>> _prev_curr_vals;
+
+  // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
+  // Caches any computed/retrieved values for which old values are needed.
   std::map<unsigned int, std::map<Location, void*>> _curr_vals;
+  // Stores needed/requested old values.
   std::map<unsigned int, std::map<Location, void*>> _old_vals;
+
+  // map<value_id, map<[elem_id,face_id,quad-point,etc], _external_curr>>
+  // Stores whether or not the value function is ever called externally (from outside the QpStore
+  // class).  If this is never marked true, then oldValue needs to invoke evaluation of the
+  // current values on its own.
+  std::map<unsigned int, std::map<Location, bool>> _external_curr;
+  // map<value_id, map<[elem_id,face_id,quad-point,etc], _delete_func>>
+  // Stores functions for deallocating void* stored data (i.e. for stateful/old values).
   std::map<unsigned int, std::function<void(void*)>> _delete_funcs;
 
+  // True to run error checking.
   bool _errcheck;
+  // map<value_id, true>. In sequences of values depending on other values, this trackes what
+  // values have been used enabling cyclical value dependency detection.
   std::map<unsigned int, bool> _cycle_stack;
 };
 
