@@ -192,5 +192,11 @@ main(int argc, char ** argv)
   //  << std::endl;
   //}
 
+  // TODO: implement something like this:
+  //    auto id1 = registerProp(prop_name_full1, valuer1);
+  //    auto id2 = registerProp(prop_name_full2, valuer2);
+  //    QpChooseValuer valuer3([=](const Location& loc) {if (loc.block() == 1) return id1; else return id2;})
+  // valuer3 then returns the value from the returned property/value id.
+
   return 0;
 }
