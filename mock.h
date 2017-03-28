@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <sstream>
 
 #include "valuer.h"
 
@@ -10,9 +11,9 @@ public:
   FEProblem(bool cyclical_detection = false) : _propstore(cyclical_detection) {}
 
   template <typename T>
-  inline unsigned int registerProp(QpValuer<T> * v, const std::string & prop)
+  inline unsigned int registerProp(QpValuer<T> * v, const std::string & prop, bool take_ownership = false)
   {
-    return _propstore.registerValue<T>(v, prop);
+    return _propstore.registerValue<T>(v, prop, take_ownership);
   }
 
   template <typename T>
@@ -49,30 +50,38 @@ class Material
 {
 public:
   Material(FEProblem & fep) : _fep(fep) {}
-  ~Material()
+
+  template <typename T, typename... Args>
+  std::string derivProp(std::string prop_name, T val, Args... args)
   {
-    for (auto func : _delete_funcs)
-      func();
+    std::stringstream ss;
+    ss << prop_name << "_D" << val;
+    return ss.str() + derivProp("", args...);
   }
+
+  std::string derivProp(std::string prop_name) { return ""; }
+
+  std::string blockProp(std::string prop_name, unsigned int block_id)
+  {
+    return prop_name + std::to_string(block_id);
+  }
+
   template <typename T>
   void registerPropFunc(std::string name, std::function<T(const Location&)> func)
   {
     auto valuer = new LambdaValuer<T>();
     valuer->init(func);
-    _delete_funcs.push_back([=](){delete valuer;});
-    _fep.registerProp(valuer, name);
+    _fep.registerProp(valuer, name, true);
   }
   template <typename T>
   void registerPropFuncVar(std::string name, T* var, std::function<void(const Location&)> func)
   {
     auto valuer = new LambdaVarValuer<T>();
     valuer->init(var, func);
-    _delete_funcs.push_back([=](){delete valuer;});
-    _fep.registerProp(valuer, name);
+    _fep.registerProp(valuer, name, true);
   }
 private:
   FEProblem& _fep;
-  std::vector<std::function<void()>> _delete_funcs;
 };
 
 #define bind_mat_prop(prop, func) registerPropFunc(prop, [this](const Location& loc){return func(loc);})

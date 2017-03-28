@@ -12,6 +12,7 @@ template <typename T>
 class QpValuer
 {
 public:
+  virtual ~QpValuer() {}
   virtual T value(const Location &) = 0;
 };
 
@@ -19,6 +20,7 @@ template <typename T>
 class LambdaVarValuer : public QpValuer<T>
 {
 public:
+  virtual ~LambdaVarValuer() {}
   void init(T* var, std::function<void(const Location &)> func) { _var = var; _func = func; }
   virtual T value(const Location & loc) override { _func(loc); return _var;}
 private:
@@ -30,6 +32,7 @@ template <typename T>
 class LambdaValuer : public QpValuer<T>
 {
 public:
+  virtual ~LambdaValuer() {}
   void init(std::function<T(const Location &)> func) { _func = func; }
   virtual T value(const Location & loc) override { return _func(loc); }
 private:
@@ -77,6 +80,12 @@ class QpStore
 public:
   QpStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}) {};
 
+  ~QpStore()
+  {
+    for (auto func : _valuer_delete_funcs)
+      func();
+  }
+
   inline unsigned int id(const std::string & name)
   {
     if (_ids.count(name) == 0)
@@ -85,7 +94,7 @@ public:
   }
 
   template <typename T>
-  unsigned int registerValue(QpValuer<T> * q, const std::string & name)
+  unsigned int registerValue(QpValuer<T> * q, const std::string & name, bool take_ownership)
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
@@ -93,6 +102,12 @@ public:
     _want_old.push_back(false);
     _types.push_back(typeid(T).hash_code());
     _type_names.push_back(typeid(T).name());
+
+    if (take_ownership)
+      _valuer_delete_funcs.push_back([=](){delete q;});
+    else
+      _valuer_delete_funcs.push_back([=](){});
+
     return id;
   }
 
@@ -223,6 +238,8 @@ private:
   std::vector<size_t> _types;
   // map<value_id, value_name>
   std::vector<std::string> _type_names;
+  // deallocation functions for all _valuers that this store owns.
+  std::vector<std::function<void()>> _valuer_delete_funcs;
 
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
