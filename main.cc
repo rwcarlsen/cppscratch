@@ -74,6 +74,39 @@ public:
   virtual T value(const Location &) = 0;
 };
 
+#define bind_mat_prop(prop, func) prop.init([this](const Location& loc){return func(loc);})
+#define bind_mat_prop_var(prop, func, var) prop.init([this](const Location& loc){func(loc); return var;})
+
+template <typename T>
+class LambdaVarValuer : public QpValuer<T>
+{
+public:
+  LambdaVarValuer(FEProblem & fep, std::string name, T & var) : _var(var)
+  {
+    fep.registerProp(this, name);
+  }
+  void init(std::function<void(const Location &)> func) { _func = func; }
+  virtual T value(const Location & loc) override { _func(loc); return _var;}
+
+private:
+  FEProblem& _fep;
+  std::function<void(const Location &)> _func;
+  T& _var;
+};
+
+template <typename T>
+class LambdaValuer : public QpValuer<T>
+{
+public:
+  LambdaValuer(FEProblem & fep, std::string name, T & var) { fep.registerProp(this, name); }
+  void init(std::function<T(const Location &)> func) { _func = func; }
+  virtual T value(const Location & loc) override { return _func(loc); }
+
+private:
+  FEProblem& _fep;
+  std::function<T(const Location &)> _func;
+};
+
 class QpStore
 {
 public:
