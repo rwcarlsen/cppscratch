@@ -1,36 +1,27 @@
 
-* Material (props) must be block/boundary restrictable.  This is automagically
-  handled by using the QpValuer inner class and implicit/direct dependency
-  resolution.  Materials will just never be called for areas where they are not needed.
+Progress reimplementing current material property system features:
 
-* Must handle mesh refinement/projection
-* handle restart/recovery
-* handle initial conditions
-* Handle stateful materials. Done.
-* Error on cyclical dependencies
-* Error on wrong cpptype prop id requests.
+- [x] support properties of arbitrary c++ type
+- [x] handle block restrictability
+- [x] handle mesh refinement/projection
+- [x] Handle stateful materials
+- [x] Error on cyclical dependencies
+- [x] Error on wrong cpptype prop id requests.
+- [ ] handle restart/recovery
 
-current redesign notes:
+Progress implementing new features:
+
+- [x] full, fine-grained property dependency resolution
+- [ ] rendezvous stateful props correctly after mesh refinement/repartitioning
+- [ ] handle initial conditions
+
+Redesign notes:
 
 * Code is very simple and very short.
-
 * Calculating/retrieving many properties is fast
-
-* Preserves not storing/cacheing/reusing material properties between computations
-
+* Preserves not storing/cacheing/reusing material properties between computations unless needed
+  for stateful properties.
 * Full material dependency tracking is in force - only compute materials that
   are needed.  This is automagic with no complicated code or user input
   required.
  
-* Handles statefulness a bit rough - but it is explicit and more powerful and
-  fairly straight forward. Could potentially use some polish
-
-* A single stateful property used by multiple sources is stored multiple
-  times.  Not sure how important it is to not do this.  We could change it.
-
-Abstract Requirements:
-
-* Calculate+store+retrieve arbitrary c++ typed data at each quadrature point on mesh
-* Must be fast
-* Want explicit calculation upon request of datum
-

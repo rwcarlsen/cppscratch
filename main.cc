@@ -219,11 +219,11 @@ blockRestrictDemo()
 int
 main(int argc, char ** argv)
 {
-  //scalingStudy();
+  scalingStudy();
   //basicPrintoutTest();
   //wrongTypeTest();
   //cyclicalDepTest();
-  blockRestrictDemo();
+  //blockRestrictDemo();
 
   // FEProblem fep;
   // MyMat mat(fep, "mymat", {"prop1", "prop7"});
