@@ -268,11 +268,12 @@ private:
     _curr_vals[id][loc] = new T(val);
   }
 
-  std::vector<bool> _have_mapper;
-  std::vector<std::function<unsigned int(const Location&)>> _mapper;
-
   // map<value_name, value_id>
   std::map<std::string, unsigned int> _ids;
+
+  // the following contiguous block of member variables are all vectors where the index represents
+  // the value id - i.e. map<value_id, [something]>
+
   // map<value_id, valuer>
   std::vector<void *> _valuers;
   // map<value_id, want_old>. True if an old version of the value has (ever) been requested.
@@ -284,6 +285,8 @@ private:
   std::vector<std::string> _type_names;
   // deallocation functions for all _valuers that this store owns.
   std::vector<std::function<void()>> _valuer_delete_funcs;
+  std::vector<bool> _have_mapper;
+  std::vector<std::function<unsigned int(const Location&)>> _mapper;
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
