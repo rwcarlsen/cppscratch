@@ -103,6 +103,8 @@ public:
     return _ids[name];
   }
 
+  inline void wantOld(const std::string & name) {_want_old[id(name)] = true;}
+
   // registerMapper allows the given value name to actually compute+return the value from another
   // valuer determined by calling the passed mapper function.  When value<...>("myval", location)
   // is called, if "myval" was registered via registerMapper, then its corresponding mapper

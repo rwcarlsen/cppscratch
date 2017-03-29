@@ -48,6 +48,8 @@ public:
 
   void shift() { _propstore.shift(); }
 
+  void wantOld(const std::string & name) { _propstore.wantOld(name); }
+
 private:
   QpStore _propstore;
 };
