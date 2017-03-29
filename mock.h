@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include <string>
 #include <sstream>
 
@@ -14,6 +15,11 @@ public:
   inline unsigned int registerProp(QpValuer<T> * v, const std::string & prop, bool take_ownership = false)
   {
     return _propstore.registerValue<T>(v, prop, take_ownership);
+  }
+
+  inline unsigned int registerMapper(const std::string & prop, std::function<unsigned int(const Location&)> mapper)
+  {
+    return _propstore.registerMapper(prop, mapper);
   }
 
   template <typename T>
@@ -51,21 +57,6 @@ class Material
 public:
   Material(FEProblem & fep) : _fep(fep) {}
 
-  template <typename T, typename... Args>
-  std::string derivProp(std::string prop_name, T val, Args... args)
-  {
-    std::stringstream ss;
-    ss << prop_name << "_D" << val;
-    return ss.str() + derivProp("", args...);
-  }
-
-  std::string derivProp(std::string prop_name) { return ""; }
-
-  std::string blockProp(std::string prop_name, unsigned int block_id)
-  {
-    return prop_name + std::to_string(block_id);
-  }
-
   template <typename T>
   void registerPropFunc(std::string name, std::function<T(const Location&)> func)
   {
@@ -80,10 +71,10 @@ public:
     valuer->init(var, func);
     _fep.registerProp(valuer, name, true);
   }
-private:
+protected:
   FEProblem& _fep;
 };
 
-#define bind_mat_prop(prop, func) registerPropFunc(prop, [this](const Location& loc){return func(loc);})
-#define bind_mat_prop_var(prop, func, var) registerPropFuncVar([this](const Location& loc){func(loc); return var;})
+#define bind_prop_func(prop, func) registerPropFunc(prop, [this](const Location& loc){return func(loc);})
+#define bind_prop_func_var(prop, func, var) registerPropFuncVar([this](const Location& loc){func(loc); return var;})
 

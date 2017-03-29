@@ -6,6 +6,7 @@
 
 #include "valuer.h"
 #include "mock.h"
+#include "util.h"
 
 class ConstQpValuer : public QpValuer<double>
 {
@@ -163,40 +164,83 @@ cyclicalDepTest()
   std::cout << "cyclicalDepTest FAIL\n";
 }
 
+void
+blockRestrictDemo()
+{
+  // this code would all be done automagically by moose from input file as normal
+  FEProblem fep;
+  ConstQpValuer v1(42);
+  ConstQpValuer v2(43);
+  fep.registerProp(&v1, "v1");
+  fep.registerProp(&v2, "v2");
+
+  // User wanting to switch properties based on block would need to write sth like this:
+  LambdaValuer<double> v;
+  v.init([&fep](const Location& loc) {
+      if (loc.block() > 5)
+        return fep.getProp<double>("v2", loc);
+      return fep.getProp<double>("v1", loc);
+      });
+  fep.registerProp(&v, "v");
+
+  // test printout code should show:
+  //     42
+  //     42
+  //     43
+  //     43
+  unsigned int block_id = 4;
+  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  block_id++;
+  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  block_id++;
+  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  block_id++;
+  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+
+  // or you can use a convenience umbrella material like this that would normally be initialized
+  // automatigically from the input file
+  // (i.e. [Material] type=Umbrella; prop="vv"; subprop='v1 0 1 2 3 4'; etc.):
+  Umbrella um(fep, "vv", {{"v1", {0, 1, 2, 3, 4, 5}}, {"v2", {6, 7, 8}}});
+  // test printout code should show:
+  //     42
+  //     42
+  //     43
+  //     43
+  block_id = 4;
+  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  block_id++;
+  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  block_id++;
+  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  block_id++;
+  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+}
+
 int
 main(int argc, char ** argv)
 {
-  scalingStudy();
-  basicPrintoutTest();
-  wrongTypeTest();
-  cyclicalDepTest();
+  //scalingStudy();
+  //basicPrintoutTest();
+  //wrongTypeTest();
+  //cyclicalDepTest();
+  blockRestrictDemo();
 
   // FEProblem fep;
   // MyMat mat(fep, "mymat", {"prop1", "prop7"});
   // MyDepOldMat matdepold(fep, "mymatdepold", "mymat-prop7");
 
-  // std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 1)) <<
-  // std::endl;
-  // std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 2)) <<
-  // std::endl;
-  // std::cout << fep.getProp<double>("mymat-prop7", Location(fep, 3, 2)) <<
-  // std::endl;
+  // std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 1)) << std::endl;
+  // std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 2)) << std::endl;
+  // std::cout << fep.getProp<double>("mymat-prop7", Location(fep, 3, 2)) << std::endl;
 
   // std::cout << "printing older props:\n";
   // Location loc(fep, 1);
   // for (int i = 0; i < 8; i++)
   //{
-  //  std::cout << "\nprop7=" << fep.getProp<double>("mymat-prop7", loc) <<
-  //  std::endl;
-  //  std::cout << "    olderprop=" << fep.getProp<double>("mymatdepold", loc)
-  //  << std::endl;
+  //  std::cout << "\nprop7=" << fep.getProp<double>("mymat-prop7", loc) << std::endl;
+  //  std::cout << "    olderprop=" << fep.getProp<double>("mymatdepold", loc) << std::endl;
   //}
-
-  // TODO: implement something like this:
-  //    auto id1 = registerProp(prop_name_full1, valuer1);
-  //    auto id2 = registerProp(prop_name_full2, valuer2);
-  //    QpChooseValuer valuer3([=](const Location& loc) {if (loc.block() == 1) return id1; else return id2;})
-  // valuer3 then returns the value from the returned property/value id.
+  //
 
   return 0;
 }

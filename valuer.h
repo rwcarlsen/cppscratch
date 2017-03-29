@@ -47,12 +47,20 @@ public:
            unsigned int qp,
            unsigned int elem = 1,
            unsigned int parent_id = 0,
+           unsigned int block_id = 0,
            unsigned int face_id = 0)
-    : _nqp(nqp), _qp(qp), _fep(fep), _elem_parent_id(parent_id), _elem_id(elem), _face_id(face_id)
+    : _nqp(nqp),
+      _qp(qp),
+      _fep(fep),
+      _elem_parent_id(parent_id),
+      _elem_id(elem),
+      _block_id(block_id),
+      _face_id(face_id)
   {
   }
   unsigned int qp() const { return _qp; }
   unsigned int nqp() const { return _nqp; }
+  unsigned int block() const { return _block_id; }
   unsigned int elem_id() const {return _elem_id;}
   FEProblem & fep() const { return _fep; }
   inline Location parent() const
@@ -69,6 +77,7 @@ private:
   unsigned int _elem_id;
   unsigned int _elem_parent_id;
   unsigned int _face_id;
+  unsigned int _block_id;
   unsigned int _qp;
 
   unsigned int _nqp;
@@ -89,8 +98,29 @@ public:
   inline unsigned int id(const std::string & name)
   {
     if (_ids.count(name) == 0)
-      throw std::runtime_error("value " + name + " doesn't exist");
+      throw std::runtime_error("value " + name + " doesn't exist (yet?)");
     return _ids[name];
+  }
+
+  // registerMapper allows the given value name to actually compute+return the value from another
+  // valuer determined by calling the passed mapper function.  When value<...>("myval", location)
+  // is called, if "myval" was registered via registerMapper, then its corresponding mapper
+  // function would be called (passing in the location) and the returned value id would be used to
+  // compute+fetch the actual value.  It is a mechanism to allow one value/id to be a conditional
+  // alias mapping to arbitrary other value id's depending on location and any other desired state
+  // closed over by the mapper function.
+  unsigned int registerMapper(const std::string & name, std::function<unsigned int(const Location&)> mapper)
+  {
+    unsigned int id = _valuers.size();
+    _ids[name] = id;
+    _valuers.push_back(nullptr);
+    _want_old.push_back(false);
+    _types.push_back(0);
+    _type_names.push_back("TYPELESS");
+    _valuer_delete_funcs.push_back([=](){});
+    _mapper.push_back(mapper);
+    _have_mapper.push_back(true);
+    return id;
   }
 
   template <typename T>
@@ -102,6 +132,8 @@ public:
     _want_old.push_back(false);
     _types.push_back(typeid(T).hash_code());
     _type_names.push_back(typeid(T).name());
+    _mapper.push_back({});
+    _have_mapper.push_back(false);
 
     if (take_ownership)
       _valuer_delete_funcs.push_back([=](){delete q;});
@@ -114,7 +146,7 @@ public:
   template <typename T>
   inline void checkType(unsigned int id)
   {
-    if (typeid(T).hash_code() != _types[id])
+    if (typeid(T).hash_code() != _types[id] && _types[id] != 0)
       throw std::runtime_error("wrong type requested: " + _type_names[id] + " != " +
                                typeid(T).name());
   }
@@ -122,6 +154,9 @@ public:
   template <typename T>
   T value(unsigned int id, const Location & loc)
   {
+    if (_have_mapper[id])
+      return value<T>(_mapper[id](loc), loc);
+
     if (_errcheck)
     {
       if (_cycle_stack.back().count(id) > 0)
@@ -151,6 +186,9 @@ public:
   template <typename T>
   T oldValue(unsigned int id, const Location & loc)
   {
+    if (_have_mapper[id])
+      return oldValue<T>(_mapper[id](loc), loc);
+
     if (_errcheck)
     {
       _cycle_stack.push_back({});
@@ -227,6 +265,9 @@ private:
     _curr_vals[id][loc] = new T(val);
   }
 
+  std::vector<bool> _have_mapper;
+  std::vector<std::function<unsigned int(const Location&)>> _mapper;
+
   // map<value_name, value_id>
   std::map<std::string, unsigned int> _ids;
   // map<value_id, valuer>
@@ -240,7 +281,6 @@ private:
   std::vector<std::string> _type_names;
   // deallocation functions for all _valuers that this store owns.
   std::vector<std::function<void()>> _valuer_delete_funcs;
-
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
