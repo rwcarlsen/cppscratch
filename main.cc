@@ -220,10 +220,10 @@ int
 main(int argc, char ** argv)
 {
   scalingStudy();
-  //basicPrintoutTest();
-  //wrongTypeTest();
-  //cyclicalDepTest();
-  //blockRestrictDemo();
+  basicPrintoutTest();
+  wrongTypeTest();
+  cyclicalDepTest();
+  blockRestrictDemo();
 
   // FEProblem fep;
   // MyMat mat(fep, "mymat", {"prop1", "prop7"});

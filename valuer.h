@@ -14,6 +14,7 @@ class QpValuer
 public:
   virtual ~QpValuer() {}
   virtual T value(const Location &) = 0;
+  virtual T initialOld(const Location &) {return T{};};
 };
 
 template <typename T>
@@ -165,13 +166,13 @@ public:
       checkType<T>(id);
     }
 
-    // mark this property as computed if we need its old value
-    if (_want_old[id])
-      _external_curr[id][loc] = true;
-
     auto val = static_cast<QpValuer<T> *>(_valuers[id])->value(loc);
     if (_want_old[id])
+    {
+      // mark this property as computed if we need its old value and stage/store value
+      _external_curr[id] = true;
       stageOldVal(id, loc, val);
+    }
     if (_errcheck)
       _cycle_stack.back().erase(id);
     return val;
@@ -190,7 +191,7 @@ public:
       return oldValue<T>(_mapper[id](loc), loc);
 
     if (_errcheck)
-    {
+    { // make sure there are no returns between this code and the next "if(_errcheck)"
       _cycle_stack.push_back({});
       checkType<T>(id);
     }
@@ -203,24 +204,24 @@ public:
 
     // force computation of current value in preparation for next old value if there was no other
     // explicit calls to value for this property/location combo.
-    if (!_external_curr[id][loc])
+    if (!_external_curr[id])
     {
       value<T>(id, loc);
       // reset to false because above value<>(...) call sets it to true, but we only want it to be
       // true if value is called by someone else (i.e. externally).
-      _external_curr[id][loc] = false;
-      if (_errcheck)
-        _cycle_stack.pop_back();
+      _external_curr[id] = false;
     }
+
+    if (_errcheck)
+      _cycle_stack.pop_back();
 
     if (_old_vals[id].count(loc) > 0)
       return *static_cast<T *>(_old_vals[id][loc]);
 
     // There was no previous old value, so we use the zero/default value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
-    T val{};
-    if (_curr_vals[id].count(loc) > 0 )
-      stageOldVal(id, loc, val);
+    T val = static_cast<QpValuer<T>*>(_valuers[id])->initialOld(loc);
+    stageOldVal(id, loc, val);
     return val;
   }
 
@@ -288,11 +289,11 @@ private:
   // Stores needed/requested old values.
   std::map<unsigned int, std::map<Location, void*>> _old_vals;
 
-  // map<value_id, map<[elem_id,face_id,quad-point,etc], _external_curr>>
+  // map<value_id, external_curr>>
   // Stores whether or not the value function is ever called externally (from outside the QpStore
   // class).  If this is never marked true, then oldValue needs to invoke evaluation of the
   // current values on its own.
-  std::map<unsigned int, std::map<Location, bool>> _external_curr;
+  std::map<unsigned int, bool> _external_curr;
   // map<value_id, map<[elem_id,face_id,quad-point,etc], _delete_func>>
   // Stores functions for deallocating void* stored data (i.e. for stateful/old values).
   std::map<unsigned int, std::function<void(void*)>> _delete_funcs;
