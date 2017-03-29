@@ -12,11 +12,14 @@ Progress reimplementing current material property system features:
 Progress implementing new features:
 
 - [x] full, fine-grained property dependency resolution
-- [ ] rendezvous stateful props correctly after mesh refinement/repartitioning
-- [ ] handle initial conditions
+- [x] handle initial conditions
+- [ ] rendezvous/communicate stateful props correctly after mesh refinement/repartitioning
 
 Redesign notes:
 
+* Current stateful property support only includes old values - it can be trivially extended to
+  older values with the addition of corresponding [bla]Older functions and a few mods to the shift
+  function.
 * Code is very simple and very short.
 * Calculating/retrieving many properties is fast
 * Preserves not storing/cacheing/reusing material properties between computations unless needed
