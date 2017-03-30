@@ -183,6 +183,8 @@ public:
     return id;
   }
 
+  void errcheck(bool check) { _errcheck = check; }
+
   // It returns a unique, persistent id assigned to the added/registered value.
   unsigned int add(QpValuerBase * q, const std::string & name, bool take_ownership = false)
   {

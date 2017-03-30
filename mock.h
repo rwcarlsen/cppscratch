@@ -9,7 +9,7 @@
 class FEProblem
 {
 public:
-  FEProblem(bool cyclical_detection = false) : _props(cyclical_detection) {}
+  FEProblem(bool errcheck = false) : _props(errcheck) {}
 
   QpStore & props() { return _props; }
 
