@@ -7,7 +7,7 @@ Progress reimplementing current material property system features:
 - [x] Handle stateful materials
 - [x] Error on cyclical dependencies
 - [x] Error on wrong cpptype prop id requests.
-- [ ] handle restart/recovery
+- [x] handle restart/recovery
 
 Progress implementing new features:
 
@@ -17,10 +17,10 @@ Progress implementing new features:
 
 Redesign notes:
 
-* Current stateful property support only includes old values - it can be trivially extended to
+* Current stateful property support only includes old values - it is trivially extendedable to
   older values with the addition of corresponding [bla]Older functions and a few mods to the shift
   function.
-* Code is very simple and very short.
+* Code is very simple and relatively short.
 * Calculating/retrieving many properties is fast
 * Preserves not storing/cacheing/reusing material properties between computations unless needed
   for stateful properties.
