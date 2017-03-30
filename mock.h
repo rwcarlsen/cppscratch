@@ -9,74 +9,43 @@
 class FEProblem
 {
 public:
-  FEProblem(bool cyclical_detection = false) : _propstore(cyclical_detection) {}
+  FEProblem(bool cyclical_detection = false) : _props(cyclical_detection) {}
 
-  template <typename T>
-  inline unsigned int registerProp(QpValuer<T> * v, const std::string & prop, bool take_ownership = false)
-  {
-    return _propstore.registerValue<T>(v, prop, take_ownership);
-  }
-
-  inline unsigned int registerMapper(const std::string & prop, std::function<unsigned int(const Location&)> mapper)
-  {
-    return _propstore.registerMapper(prop, mapper);
-  }
-
-  template <typename T>
-  inline T getProp(const std::string & name, const Location & loc)
-  {
-    return _propstore.value<T>(name, loc);
-  }
-  template <typename T>
-  inline T getProp(unsigned int prop, const Location & loc)
-  {
-    return _propstore.value<T>(prop, loc);
-  }
-
-  template <typename T>
-  inline T getPropOld(const std::string & name, const Location & loc)
-  {
-    return _propstore.oldValue<T>(name, loc);
-  }
-  template <typename T>
-  inline T getPropOld(unsigned int prop, const Location & loc)
-  {
-    return _propstore.oldValue<T>(prop, loc);
-  }
-
-  inline unsigned int prop_id(const std::string & name) { return _propstore.id(name); }
-
-  void shift() { _propstore.shift(); }
-
-  void wantOld(const std::string & name) { _propstore.wantOld(name); }
+  QpStore& props() {return _props;}
 
 private:
-  QpStore _propstore;
+  QpStore _props;
 };
 
 class Material
 {
 public:
-  Material(FEProblem & fep) : _fep(fep) {}
+  Material(FEProblem & fep) : _props(fep.store()) {}
 
   template <typename T>
-  void registerPropFunc(std::string name, std::function<T(const Location&)> func)
+  void addPropFunc(std::string name, std::function<T(const Location &)> func)
   {
     auto valuer = new LambdaValuer<T>();
     valuer->init(func);
-    _fep.registerProp(valuer, name, true);
+    _props.add(valuer, name, true);
   }
   template <typename T>
-  void registerPropFuncVar(std::string name, T* var, std::function<void(const Location&)> func)
+  void addPropFuncVar(std::string name, T * var, std::function<void(const Location &)> func)
   {
     auto valuer = new LambdaVarValuer<T>();
     valuer->init(var, func);
-    _fep.registerProp(valuer, name, true);
+    _props.addProp(valuer, name, true);
   }
+
 protected:
-  FEProblem& _fep;
+  QpStore & _props;
 };
 
-#define bind_prop_func(prop, func) registerPropFunc(prop, [this](const Location& loc){return func(loc);})
-#define bind_prop_func_var(prop, func, var) registerPropFuncVar([this](const Location& loc){func(loc); return var;})
+#define bind_prop_func(prop, func)                                                                 \
+  addPropFunc(prop, [this](const Location & loc) { return func(loc); })
+#define bind_prop_func_var(prop, func, var)                                                        \
+  addPropFuncVar([this](const Location & loc) {                                                    \
+    func(loc);                                                                                     \
+    return var;                                                                                    \
+  })
 

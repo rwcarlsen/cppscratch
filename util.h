@@ -34,11 +34,11 @@ public:
            std::map<std::string, std::set<unsigned int>> subprops)
     : Material(fep)
   {
-    fep.registerMapper(prop_name, [&fep, prop_name, subprops](const Location & loc) {
+    _props.addMapper(prop_name, [this, prop_name, subprops](const Location & loc) {
       for (auto & it : subprops)
       {
         if (it.second.count(loc.block()) > 0)
-          return fep.prop_id(it.first);
+          return _props.id(it.first);
       }
       throw std::runtime_error("property " + prop_name + " is not defined on block " +
                                std::to_string(loc.block()));

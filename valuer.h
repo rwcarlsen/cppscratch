@@ -13,7 +13,7 @@ class QpValuer
 {
 public:
   virtual ~QpValuer() {}
-  virtual T value(const Location &) = 0;
+  virtual T get(const Location &) = 0;
   virtual T initialOld(const Location &) {return T{};};
 };
 
@@ -23,7 +23,7 @@ class LambdaVarValuer : public QpValuer<T>
 public:
   virtual ~LambdaVarValuer() {}
   void init(T* var, std::function<void(const Location &)> func) { _var = var; _func = func; }
-  virtual T value(const Location & loc) override { _func(loc); return _var;}
+  virtual T get(const Location & loc) override { _func(loc); return _var;}
 private:
   std::function<void(const Location &)> _func;
   T* _var;
@@ -35,7 +35,7 @@ class LambdaValuer : public QpValuer<T>
 public:
   virtual ~LambdaValuer() {}
   void init(std::function<T(const Location &)> func) { _func = func; }
-  virtual T value(const Location & loc) override { return _func(loc); }
+  virtual T get(const Location & loc) override { return _func(loc); }
 private:
   std::function<T(const Location &)> _func;
 };
@@ -43,7 +43,7 @@ private:
 class Location
 {
 public:
-  Location(FEProblem & fep,
+  Location(QpStore* store,
            unsigned int nqp,
            unsigned int qp,
            unsigned int elem = 1,
@@ -52,7 +52,7 @@ public:
            unsigned int face_id = 0)
     : _nqp(nqp),
       _qp(qp),
-      _fep(fep),
+      _store(store),
       _elem_parent_id(parent_id),
       _elem_id(elem),
       _block_id(block_id),
@@ -63,10 +63,10 @@ public:
   unsigned int nqp() const { return _nqp; }
   unsigned int block() const { return _block_id; }
   unsigned int elem_id() const {return _elem_id;}
-  FEProblem & fep() const { return _fep; }
+  QpStore & vals() const { return *_store; }
   inline Location parent() const
   {
-    return Location(_fep, _nqp, _qp, _elem_id, _elem_parent_id);
+    return Location(_store, _nqp, _qp, _elem_id, _elem_parent_id);
   }
 
   friend bool operator<(const Location & lhs, const Location & rhs)
@@ -82,9 +82,12 @@ private:
   unsigned int _qp;
 
   unsigned int _nqp;
-  FEProblem & _fep;
+  QpStore* _store;
 };
 
+// Unless otherwise noted, an 'id argument to a function refers to the unique id assigned to that
+// added/registered value - i.e. the id returned by the add(...), addMapper(...), and id(...)
+// functions.
 class QpStore
 {
 public:
@@ -96,6 +99,8 @@ public:
       func();
   }
 
+  // Returns the id of the named, *previously* added/registered value or mapper.  Throws an error
+  // if name has never been added/registered.
   inline unsigned int id(const std::string & name)
   {
     if (_ids.count(name) == 0)
@@ -105,14 +110,15 @@ public:
 
   inline void wantOld(const std::string & name) {_want_old[id(name)] = true;}
 
-  // registerMapper allows the given value name to actually compute+return the value from another
-  // valuer determined by calling the passed mapper function.  When value<...>("myval", location)
-  // is called, if "myval" was registered via registerMapper, then its corresponding mapper
+  // addMapper allows the given value name to actually compute+return the value from another
+  // valuer determined by calling the passed mapper function.  It returns a unique, persistent id
+  // assigned to the added value/mapper.  When get<...>("myval", location)
+  // is called, if "myval" was registered via addMapper, then its corresponding mapper
   // function would be called (passing in the location) and the returned value id would be used to
   // compute+fetch the actual value.  It is a mechanism to allow one value/id to be a conditional
   // alias mapping to arbitrary other value id's depending on location and any other desired state
   // closed over by the mapper function.
-  unsigned int registerMapper(const std::string & name, std::function<unsigned int(const Location&)> mapper)
+  unsigned int addMapper(const std::string & name, std::function<unsigned int(const Location&)> mapper)
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
@@ -126,8 +132,9 @@ public:
     return id;
   }
 
+  // It returns a unique, persistent id assigned to the added/registered value.
   template <typename T>
-  unsigned int registerValue(QpValuer<T> * q, const std::string & name, bool take_ownership)
+  unsigned int add(QpValuer<T> * q, const std::string & name, bool take_ownership)
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
@@ -147,18 +154,10 @@ public:
   }
 
   template <typename T>
-  inline void checkType(unsigned int id)
-  {
-    if (typeid(T).hash_code() != _types[id] && _types[id] != 0)
-      throw std::runtime_error("wrong type requested: " + _type_names[id] + " != " +
-                               typeid(T).name());
-  }
-
-  template <typename T>
-  T value(unsigned int id, const Location & loc)
+  T get(unsigned int id, const Location & loc)
   {
     if (_have_mapper[id])
-      return value<T>(_mapper[id](loc), loc);
+      return get<T>(_mapper[id](loc), loc);
 
     if (_errcheck)
     {
@@ -168,12 +167,12 @@ public:
       checkType<T>(id);
     }
 
-    auto val = static_cast<QpValuer<T> *>(_valuers[id])->value(loc);
+    auto val = static_cast<QpValuer<T> *>(_valuers[id])->get(loc);
     if (_want_old[id])
     {
       // mark this property as computed if we need its old value and stage/store value
       _external_curr[id] = true;
-      stageOldVal(id, loc, val);
+      stageOld(id, loc, val);
     }
     if (_errcheck)
       _cycle_stack.back().erase(id);
@@ -181,16 +180,16 @@ public:
   }
 
   template <typename T>
-  inline double value(const std::string & name, const Location & loc)
+  inline double get(const std::string & name, const Location & loc)
   {
-    return value<T>(id(name), loc);
+    return get<T>(id(name), loc);
   }
 
   template <typename T>
-  T oldValue(unsigned int id, const Location & loc)
+  T getOld(unsigned int id, const Location & loc)
   {
     if (_have_mapper[id])
-      return oldValue<T>(_mapper[id](loc), loc);
+      return getOld<T>(_mapper[id](loc), loc);
 
     if (_errcheck)
     { // make sure there are no returns between this code and the next "if(_errcheck)"
@@ -208,8 +207,8 @@ public:
     // explicit calls to value for this property/location combo.
     if (!_external_curr[id])
     {
-      value<T>(id, loc);
-      // reset to false because above value<>(...) call sets it to true, but we only want it to be
+      get<T>(id, loc);
+      // reset to false because above get<>(...) call sets it to true, but we only want it to be
       // true if value is called by someone else (i.e. externally).
       _external_curr[id] = false;
     }
@@ -223,21 +222,21 @@ public:
     // There was no previous old value, so we use the zero/default value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
     T val = static_cast<QpValuer<T>*>(_valuers[id])->initialOld(loc);
-    stageOldVal(id, loc, val);
+    stageOld(id, loc, val);
     return val;
   }
 
   template <typename T>
-  T oldValue(const std::string & name, const Location & loc)
+  T getOld(const std::string & name, const Location & loc)
   {
-    return oldValue<T>(id(name), loc);
+    return getOld<T>(id(name), loc);
   }
 
   // Projects/copies computed old values at the source locations to live under destination
   // locations (mapped one to one in the ordered vectors).  When doing e.g. mesh adaptivity, call
   // this to project values at old locations (srcs) to new locations (dsts) where they were never
   // explicitly computed before.  This needs to be called *after* the call to shift and *before*
-  // calls to oldValue.
+  // calls to getOld.
   void project(std::vector<const Location*> srcs, std::vector<const Location*> dsts)
   {
     for (unsigned int id = 0; id < _valuers.size(); id++)
@@ -260,12 +259,22 @@ private:
   // Stores/saves a computed value so it can be used as old next iteration/step (i.e. after shift
   // call).
   template <typename T>
-  void stageOldVal(unsigned int id, const Location & loc, const T & val)
+  void stageOld(unsigned int id, const Location & loc, const T & val)
   {
     auto prev = _curr_vals[id][loc];
     if (prev != nullptr)
       delete static_cast<T *>(prev);
     _curr_vals[id][loc] = new T(val);
+  }
+
+  // Used to ensure the c++ type of a value being retrieved (i.e. T) is the same as the c++ type
+  // that was stored/added there.
+  template <typename T>
+  inline void checkType(unsigned int id)
+  {
+    if (typeid(T).hash_code() != _types[id] && _types[id] != 0)
+      throw std::runtime_error("wrong type requested: " + _type_names[id] + " != " +
+                               typeid(T).name());
   }
 
   // map<value_name, value_id>
@@ -295,8 +304,8 @@ private:
   std::map<unsigned int, std::map<Location, void*>> _old_vals;
 
   // map<value_id, external_curr>>
-  // Stores whether or not the value function is ever called externally (from outside the QpStore
-  // class).  If this is never marked true, then oldValue needs to invoke evaluation of the
+  // Stores whether or not the get<...>(...) function is ever called externally (from outside the QpStore
+  // class).  If this is never marked true, then getOld needs to invoke evaluation of the
   // current values on its own.
   std::map<unsigned int, bool> _external_curr;
   // map<value_id, map<[elem_id,face_id,quad-point,etc], _delete_func>>
@@ -307,7 +316,7 @@ private:
   bool _errcheck;
   // list<map<value_id, true>>. In sequences of values depending on other values, this tracks what
   // values have been used between dependency chains - enabling cyclical value dependency
-  // detection. oldValue retrieval breaks dependency chains.
+  // detection. getOld retrieval breaks dependency chains.
   std::list<std::map<unsigned int, bool>> _cycle_stack;
 };
 

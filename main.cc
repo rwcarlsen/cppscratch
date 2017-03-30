@@ -12,7 +12,7 @@ class ConstQpValuer : public QpValuer<double>
 {
 public:
   ConstQpValuer(double val) : _val(val) {}
-  virtual double value(const Location & loc) override { return _val; }
+  virtual double get(const Location & loc) override { return _val; }
 
 private:
   double _val;
@@ -21,7 +21,7 @@ private:
 class IncrementQpValuer : public QpValuer<double>
 {
 public:
-  virtual double value(const Location & loc) override { return _next++; }
+  virtual double get(const Location & loc) override { return _next++; }
 
 private:
   int _next = 0;
@@ -31,9 +31,9 @@ class DepQpValuer : public QpValuer<double>
 {
 public:
   DepQpValuer(double toadd, const std::string & dep) : _toadd(toadd), _dep(dep) {}
-  virtual double value(const Location & loc) override
+  virtual double get(const Location & loc) override
   {
-    return loc.fep().getProp<double>(_dep, loc) + _toadd;
+    return loc.vals().get<double>(_dep, loc) + _toadd;
   }
 
 private:
@@ -47,7 +47,7 @@ public:
   MyMat(FEProblem & fep, std::string base, std::vector<std::string> props) : Material(fep)
   {
     for (int i = 0; i < props.size(); i++)
-      registerPropFunc<double>(base + "-" + props[i], [=](const Location& loc){return 42000+i;});
+      addPropFunc<double>(base + "-" + props[i], [=](const Location& loc){return 42000+i;});
   }
 };
 
@@ -102,7 +102,7 @@ basicPrintoutTest()
             << std::endl;
 
   IncrementQpValuer iq;
-  auto id = fep.registerProp(&iq, "inc-qp");
+  auto id = fep.addProp(&iq, "inc-qp");
 
   std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
   std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
@@ -147,9 +147,9 @@ cyclicalDepTest()
   DepQpValuer dq1(1, "dep2");
   DepQpValuer dq2(1, "dep3");
   DepQpValuer dq3(1, "dep1");
-  auto id1 = fep.registerProp(&dq1, "dep1");
-  auto id2 = fep.registerProp(&dq2, "dep2");
-  auto id3 = fep.registerProp(&dq3, "dep3");
+  auto id1 = fep.addProp(&dq1, "dep1");
+  auto id2 = fep.addProp(&dq2, "dep2");
+  auto id3 = fep.addProp(&dq3, "dep3");
 
   // throw error - cyclical dependency
   try
@@ -171,8 +171,8 @@ blockRestrictDemo()
   FEProblem fep;
   ConstQpValuer v1(42);
   ConstQpValuer v2(43);
-  fep.registerProp(&v1, "v1");
-  fep.registerProp(&v2, "v2");
+  fep.addProp(&v1, "v1");
+  fep.addProp(&v2, "v2");
 
   // User wanting to switch properties based on block would need to write sth like this:
   LambdaValuer<double> v;
@@ -181,7 +181,7 @@ blockRestrictDemo()
         return fep.getProp<double>("v2", loc);
       return fep.getProp<double>("v1", loc);
       });
-  fep.registerProp(&v, "v");
+  fep.addProp(&v, "v");
 
   // test printout code should show:
   //     42
