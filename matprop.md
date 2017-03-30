@@ -17,9 +17,6 @@ Progress implementing new features:
 
 Redesign notes:
 
-* Current stateful property support only includes old values - it is trivially extendedable to
-  older values with the addition of corresponding [bla]Older functions and a few mods to the shift
-  function.
 * Code is very simple and relatively short.
 * Calculating/retrieving many properties is fast
 * Preserves not storing/cacheing/reusing material properties between computations unless needed

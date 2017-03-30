@@ -161,6 +161,7 @@ public:
   }
 
   inline void wantOld(const std::string & name) { _want_old[id(name)] = true; }
+  inline void wantOlder(const std::string & name) { _want_older[id(name)] = true; }
 
   // addMapper allows the given value name to actually compute+return the value from another
   // valuer determined by calling the passed mapper function.  It returns a unique, persistent id
@@ -173,14 +174,7 @@ public:
   unsigned int addMapper(const std::string & name,
                          std::function<unsigned int(const Location &)> mapper)
   {
-    unsigned int id = _valuers.size();
-    _ids[name] = id;
-    _valuers.push_back(nullptr);
-    _want_old.push_back(false);
-    _own_valuer.push_back(false);
-    _mapper.push_back(mapper);
-    _have_mapper.push_back(true);
-    return id;
+    return add(name, nullptr, mapper, false);
   }
 
   void errcheck(bool check) { _errcheck = check; }
@@ -189,14 +183,7 @@ public:
   template <typename T>
   unsigned int add(QpValuer<T> * q, const std::string & name, bool take_ownership = false)
   {
-    unsigned int id = _valuers.size();
-    _ids[name] = id;
-    _valuers.push_back(q);
-    _want_old.push_back(false);
-    _mapper.push_back({});
-    _have_mapper.push_back(false);
-    _own_valuer.push_back(take_ownership);
-    return id;
+    return add(name, q, {}, take_ownership);
   }
 
   template <typename T>
@@ -214,7 +201,7 @@ public:
     }
 
     auto val = static_cast<QpValuer<T> *>(_valuers[id])->get(loc);
-    if (_want_old[id])
+    if (_want_old[id] || _want_older[id])
     {
       // mark this property as computed if we need its old value and stage/store value
       _external_curr[id] = true;
@@ -234,45 +221,25 @@ public:
   template <typename T>
   T getOld(unsigned int id, const Location & loc)
   {
-    if (_have_mapper[id])
-      return getOld<T>(_mapper[id](loc), loc);
-
-    if (_errcheck)
-    { // make sure there are no returns between this code and the next "if(_errcheck)"
-      _cycle_stack.push_back({});
-      checkType<T>(id);
-    }
-
-    if (!_want_old[id])
-      _want_old[id] = true;
-
-    // force computation of current value in preparation for next old value if there was no other
-    // explicit calls to value for this property/location combo.
-    if (!_external_curr[id])
-    {
-      get<T>(id, loc);
-      // reset to false because above get<>(...) call sets it to true, but we only want it to be
-      // true if value is called by someone else (i.e. externally).
-      _external_curr[id] = false;
-    }
-
-    if (_errcheck)
-      _cycle_stack.pop_back();
-
-    if (_old_vals[id].count(loc) > 0)
-      return static_cast<TypedValue<T> *>(_old_vals[id][loc])->val;
-
-    // There was no previous old value, so we use the zero/default value.  We also need to
-    // stage/store if there is no corresponding stored current value to become the next old value.
-    T val = static_cast<QpValuer<T> *>(_valuers[id])->initialOld(loc);
-    stageOld(id, loc, val);
-    return val;
+    return getStored<T>(_old_vals, _want_old, id, loc);
   }
 
   template <typename T>
   T getOld(const std::string & name, const Location & loc)
   {
     return getOld<T>(id(name), loc);
+  }
+
+  template <typename T>
+  T getOlder(unsigned int id, const Location & loc)
+  {
+    return getStored<T>(_older_vals, _want_older, id, loc);
+  }
+
+  template <typename T>
+  T getOlder(const std::string & name, const Location & loc)
+  {
+    return getOlder<T>(id(name), loc);
   }
 
   // Projects/copies computed old values at the source locations to live under destination
@@ -297,9 +264,74 @@ public:
   }
 
   // Moves stored "current" values to "older" values, discarding any previous "older" values.
-  void shift() { _old_vals.swap(_curr_vals); }
+  void shift()
+  {
+    _older_vals.swap(_old_vals);
+    _old_vals.swap(_curr_vals);
+  }
 
 private:
+  // handles all addition of new values to this store.  _ids, _valuers, etc. structures themselves
+  // (not
+  // necsesarily the items they hold) should generally NOT be modified by anything other than this
+  // function.
+  unsigned int add(const std::string & name,
+                   QpValuerBase * q,
+                   std::function<unsigned int(const Location &)> mapper,
+                   bool take_ownership)
+  {
+    unsigned int id = _valuers.size();
+    _ids[name] = id;
+    _valuers.push_back(q);
+    _want_old.push_back(false);
+    _want_older.push_back(false);
+    _own_valuer.push_back(take_ownership);
+    _mapper.push_back(mapper);
+    _have_mapper.push_back(q != nullptr);
+    return id;
+  }
+
+  template <typename T>
+  T getStored(std::map<unsigned int, std::map<Location, Value *>> & vals,
+              std::vector<bool> & want,
+              unsigned int id,
+              const Location & loc)
+  {
+    if (_have_mapper[id])
+      return getStored<T>(vals, want, _mapper[id](loc), loc);
+
+    if (_errcheck)
+    { // make sure there are no returns between this code and the next "if(_errcheck)"
+      _cycle_stack.push_back({});
+      checkType<T>(id);
+    }
+
+    if (!want[id])
+      want[id] = true;
+
+    // force computation of current value in preparation for next old value if there was no other
+    // explicit calls to value for this property/location combo.
+    if (!_external_curr[id])
+    {
+      get<T>(id, loc);
+      // reset to false because above get<>(...) call sets it to true, but we only want it to be
+      // true if value is called by someone else (i.e. externally).
+      _external_curr[id] = false;
+    }
+
+    if (_errcheck)
+      _cycle_stack.pop_back();
+
+    if (vals[id].count(loc) > 0)
+      return static_cast<TypedValue<T> *>(vals[id][loc])->val;
+
+    // There was no previous old value, so we use the zero/default value.  We also need to
+    // stage/store if there is no corresponding stored current value to become the next old value.
+    T val = static_cast<QpValuer<T> *>(_valuers[id])->initialOld(loc);
+    stageOld(id, loc, val);
+    return val;
+  }
+
   // Stores/saves a computed value so it can be used as old next iteration/step (i.e. after shift
   // call).
   template <typename T>
@@ -334,6 +366,8 @@ private:
   std::vector<bool> _own_valuer;
   // map<value_id, want_old>. True if an old version of the value has (ever) been requested.
   std::vector<bool> _want_old;
+  // map<value_id, want_older>. True if an older version of the value has (ever) been requested.
+  std::vector<bool> _want_older;
   std::vector<bool> _have_mapper;
   std::vector<std::function<unsigned int(const Location &)>> _mapper;
 
@@ -342,6 +376,8 @@ private:
   std::map<unsigned int, std::map<Location, Value *>> _curr_vals;
   // Stores needed/requested old values.
   std::map<unsigned int, std::map<Location, Value *>> _old_vals;
+  // Stores needed/requested older values.
+  std::map<unsigned int, std::map<Location, Value *>> _older_vals;
 
   // map<value_id, external_curr>>
   // Stores whether or not the get<...>(...) function is ever called externally (from outside the
@@ -353,8 +389,8 @@ private:
   // True to run error checking.
   bool _errcheck;
   // list<map<value_id, true>>. In sequences of values depending on other values, this tracks what
-  // values have been used between dependency chains - enabling cyclical value dependency
-  // detection. getOld retrieval breaks dependency chains.
+  // values have been used in dependency chains - enabling cyclical value dependency
+  // detection. getOld[er] retrieval breaks dependency chains.
   std::list<std::map<unsigned int, bool>> _cycle_stack;
 };
 
