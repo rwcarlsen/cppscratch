@@ -1,9 +1,51 @@
+#pragma once
 
 #include <set>
-#include <string>
 #include <map>
+#include <string>
+#include <sstream>
 
-#include "mock.h"
+#include "valuer.h"
+
+class FEProblem
+{
+public:
+  FEProblem(bool errcheck = false) : _props(errcheck) {}
+
+  QpStore & props() { return _props; }
+
+private:
+  QpStore _props;
+};
+
+class Material
+{
+public:
+  Material(FEProblem & fep) : _props(fep.props()) {}
+
+  template <typename T>
+  void addPropFunc(std::string name, std::function<T(const Location &)> func)
+  {
+    auto valuer = new LambdaValuer<T>();
+    valuer->init(func);
+    _props.add(valuer, name, true);
+  }
+  template <typename T>
+  void addPropFuncVar(std::string name, T * var, std::function<void(const Location &)> func)
+  {
+    auto valuer = new LambdaVarValuer<T>();
+    valuer->init(var, func);
+    _props.add(valuer, name, true);
+  }
+
+protected:
+  QpStore & _props;
+};
+
+#define bind_prop_func(prop, T, func)                                                              \
+  addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); })
+#define bind_prop_func_var(prop, T, func, var)                                                     \
+  addPropFuncVar<T>(prop, &var, [this](const Location & loc) { func(loc); })
 
 // Generate a standardized derivative property name using a base name plus an (ordered) sequence of
 // independent variable names of each partial derivative.  1 varaible implies 1st order

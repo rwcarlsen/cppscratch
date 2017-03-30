@@ -5,8 +5,7 @@
 #include <list>
 
 #include "valuer.h"
-#include "mock.h"
-#include "util.h"
+#include "moose.h"
 
 class ConstQpValuer : public QpValuer<double>
 {
