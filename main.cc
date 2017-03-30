@@ -213,7 +213,7 @@ blockRestrictDemo()
   // User wanting to switch properties based on block would need to write sth like this:
   LambdaValuer<double> v;
   v.init([&fep](const Location & loc) {
-    if (loc.block() > 5)
+    if (loc.block_id > 5)
       return fep.props().get<double>("v2", loc);
     return fep.props().get<double>("v1", loc);
   });

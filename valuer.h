@@ -8,13 +8,55 @@
 class Location;
 class QpStore;
 
+// These are stubs for MOOSE data store/load functions.
 template <typename T>
-class QpValuer
+void dataLoad(std::istream& s, T val) {}
+template <typename T>
+void dataStore(std::ostream& s, T val) {}
+
+// This class is necessary to perform a "trick" to enable serialization to/from string streams. for
+// arbitrary types.  The virtual load/store functions dispatch down to the subclass QpValuer<T>
+// type-specific subclasses that can then call their type-specific load/store functions.  This
+// trick is also used to be able to clone and destruct object of arbitrary type without casting
+// them or fancy lambda hacks.
+class Value
+{
+public:
+  virtual void store(std::ostream& s) = 0;
+  virtual void load(std::istream& s) = 0;
+  virtual Value * clone() = 0;
+  virtual ~Value() {}
+};
+
+template <typename T>
+class TypedValue final : public Value
+{
+public:
+  TypedValue(T val) : val(val) {}
+  virtual ~TypedValue() {}
+  virtual void store(std::ostream& s) override { dataStore(s, val); }
+  virtual void load(std::istream& s) override { dataLoad(s, val); }
+  virtual Value * clone() override { return new TypedValue<T>(val); }
+  T val;
+};
+
+class QpValuerBase
+{
+public:
+  virtual ~QpValuerBase() {}
+  virtual size_t type() = 0;
+  virtual std::string type_name() = 0;
+};
+
+template <typename T>
+class QpValuer : public QpValuerBase
 {
 public:
   virtual ~QpValuer() {}
   virtual T get(const Location &) = 0;
   virtual T initialOld(const Location &) { return T{}; };
+  virtual size_t type() final override { return typeid(T).hash_code(); }
+  virtual std::string type_name() final override { return typeid(T).name(); }
 };
 
 template <typename T>
@@ -59,35 +101,31 @@ public:
            unsigned int parent_id = 0,
            unsigned int block_id = 0,
            unsigned int face_id = 0)
-    : _nqp(nqp),
-      _qp(qp),
+    : nqp(nqp),
+      qp(qp),
       _store(store),
-      _elem_parent_id(parent_id),
-      _elem_id(elem),
-      _block_id(block_id),
-      _face_id(face_id)
+      elem_parent_id(parent_id),
+      elem_id(elem),
+      block_id(block_id),
+      face_id(face_id)
   {
   }
-  unsigned int qp() const { return _qp; }
-  unsigned int nqp() const { return _nqp; }
-  unsigned int block() const { return _block_id; }
-  unsigned int elem_id() const { return _elem_id; }
   QpStore & vals() const { return *_store; }
-  inline Location parent() const { return Location(_store, _nqp, _qp, _elem_id, _elem_parent_id); }
+  inline Location parent() const { return Location(_store, nqp, qp, elem_id, elem_parent_id); }
 
   friend bool operator<(const Location & lhs, const Location & rhs)
   {
-    return lhs._elem_id < rhs._elem_id || lhs._face_id < rhs._face_id || lhs._qp < rhs._qp;
+    return lhs.elem_id < rhs.elem_id || lhs.face_id < rhs.face_id || lhs.qp < rhs.qp;
   }
 
-private:
-  unsigned int _elem_id;
-  unsigned int _elem_parent_id;
-  unsigned int _face_id;
-  unsigned int _block_id;
-  unsigned int _qp;
+  unsigned int elem_id;
+  unsigned int elem_parent_id;
+  unsigned int face_id;
+  unsigned int block_id;
+  unsigned int qp;
+  unsigned int nqp;
 
-  unsigned int _nqp;
+private:
   QpStore * _store;
 };
 
@@ -101,8 +139,9 @@ public:
 
   ~QpStore()
   {
-    for (auto func : _valuer_delete_funcs)
-      func();
+    for (int i = 0; i < _valuers.size(); i++)
+      if (_own_valuer[i])
+        delete _valuers[i];
   }
 
   // Returns the id of the named, *previously* added/registered value or mapper.  Throws an error
@@ -131,32 +170,22 @@ public:
     _ids[name] = id;
     _valuers.push_back(nullptr);
     _want_old.push_back(false);
-    _types.push_back(0);
-    _type_names.push_back("TYPELESS");
-    _valuer_delete_funcs.push_back([=]() {});
+    _own_valuer.push_back(false);
     _mapper.push_back(mapper);
     _have_mapper.push_back(true);
     return id;
   }
 
   // It returns a unique, persistent id assigned to the added/registered value.
-  template <typename T>
-  unsigned int add(QpValuer<T> * q, const std::string & name, bool take_ownership = false)
+  unsigned int add(QpValuerBase * q, const std::string & name, bool take_ownership = false)
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
     _valuers.push_back(q);
     _want_old.push_back(false);
-    _types.push_back(typeid(T).hash_code());
-    _type_names.push_back(typeid(T).name());
     _mapper.push_back({});
     _have_mapper.push_back(false);
-
-    if (take_ownership)
-      _valuer_delete_funcs.push_back([=]() { delete q; });
-    else
-      _valuer_delete_funcs.push_back([=]() {});
-
+    _own_valuer.push_back(take_ownership);
     return id;
   }
 
@@ -205,10 +234,7 @@ public:
     }
 
     if (!_want_old[id])
-    {
       _want_old[id] = true;
-      _delete_funcs[id] = [](void * val) { delete reinterpret_cast<T *>(&val); };
-    }
 
     // force computation of current value in preparation for next old value if there was no other
     // explicit calls to value for this property/location combo.
@@ -224,7 +250,7 @@ public:
       _cycle_stack.pop_back();
 
     if (_old_vals[id].count(loc) > 0)
-      return *static_cast<T *>(_old_vals[id][loc]);
+      return static_cast<TypedValue<T> *>(_old_vals[id][loc])->val;
 
     // There was no previous old value, so we use the zero/default value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
@@ -252,10 +278,11 @@ public:
       {
         auto & src = *srcs[i];
         auto & dst = *dsts[i];
-        _delete_funcs[id](_old_vals[id][dst]);
-        _old_vals[id][dst] = _old_vals[id][src];
-        _delete_funcs[id](_old_vals[id][src]);
+        delete _old_vals[id][dst];
+        _old_vals[id][dst] = _old_vals[id][src]->clone();
       }
+      for (auto src : srcs)
+        delete _old_vals[id][*src];
     }
   }
 
@@ -270,8 +297,8 @@ private:
   {
     auto prev = _curr_vals[id][loc];
     if (prev != nullptr)
-      delete static_cast<T *>(prev);
-    _curr_vals[id][loc] = new T(val);
+      delete prev;
+    _curr_vals[id][loc] = new TypedValue<T>(val);
   }
 
   // Used to ensure the c++ type of a value being retrieved (i.e. T) is the same as the c++ type
@@ -279,8 +306,9 @@ private:
   template <typename T>
   inline void checkType(unsigned int id)
   {
-    if (typeid(T).hash_code() != _types[id] && _types[id] != 0)
-      throw std::runtime_error("wrong type requested: " + _type_names[id] + " != " +
+    auto valuer = _valuers[id];
+    if (valuer && typeid(T).hash_code() != valuer->type())
+      throw std::runtime_error("wrong type requested: " + valuer->type_name() + " != " +
                                typeid(T).name());
   }
 
@@ -291,24 +319,19 @@ private:
   // the value id - i.e. map<value_id, [something]>
 
   // map<value_id, valuer>
-  std::vector<void *> _valuers;
+  std::vector<QpValuerBase *> _valuers;
+  // true if we own the memory of the valuer
+  std::vector<bool> _own_valuer;
   // map<value_id, want_old>. True if an old version of the value has (ever) been requested.
   std::vector<bool> _want_old;
-  // map<value_id, type_id> Stores a unique type id corresponding to each value.  Used for error
-  // checking.
-  std::vector<size_t> _types;
-  // map<value_id, value_name>
-  std::vector<std::string> _type_names;
-  // deallocation functions for all _valuers that this store owns.
-  std::vector<std::function<void()>> _valuer_delete_funcs;
   std::vector<bool> _have_mapper;
   std::vector<std::function<unsigned int(const Location &)>> _mapper;
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
-  std::map<unsigned int, std::map<Location, void *>> _curr_vals;
+  std::map<unsigned int, std::map<Location, Value*>> _curr_vals;
   // Stores needed/requested old values.
-  std::map<unsigned int, std::map<Location, void *>> _old_vals;
+  std::map<unsigned int, std::map<Location, Value*>> _old_vals;
 
   // map<value_id, external_curr>>
   // Stores whether or not the get<...>(...) function is ever called externally (from outside the
@@ -316,9 +339,6 @@ private:
   // class).  If this is never marked true, then getOld needs to invoke evaluation of the
   // current values on its own.
   std::map<unsigned int, bool> _external_curr;
-  // map<value_id, map<[elem_id,face_id,quad-point,etc], _delete_func>>
-  // Stores functions for deallocating void* stored data (i.e. for stateful/old values).
-  std::map<unsigned int, std::function<void(void *)>> _delete_funcs;
 
   // True to run error checking.
   bool _errcheck;
@@ -327,4 +347,41 @@ private:
   // detection. getOld retrieval breaks dependency chains.
   std::list<std::map<unsigned int, bool>> _cycle_stack;
 };
+
+////////////////////////
+// specialization for storing/loading Location objects and arbitrary typed values stored in Value
+// objects
+//
+
+template <>
+inline void
+dataStore(std::ostream & stream, const Location & loc)
+{
+  dataStore(stream, loc.elem_id);
+  dataStore(stream, loc.face_id);
+  dataStore(stream, loc.qp);
+}
+
+template <>
+inline void
+dataLoad(std::istream & stream, Location & loc)
+{
+  dataLoad(stream, &loc.elem_id);
+  dataLoad(stream, &loc.face_id);
+  dataLoad(stream, &loc.qp);
+}
+
+template <>
+inline void
+dataStore(std::ostream & stream, Value * v)
+{
+  v->store(stream);
+}
+
+template <>
+inline void
+dataLoad(std::istream & stream, Value * v)
+{
+  v->load(stream);
+}
 
