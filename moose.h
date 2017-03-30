@@ -18,6 +18,50 @@ private:
   QpStore _props;
 };
 
+// Defines a value/property computed by calling a specified (lambda) function and then returning
+// the value stored at a particular variable address/pointer location.  Caches the most recent
+// location evaluated since the last shift() call.  If the location is the same for later calls,
+// the (lambda) function is not called again and just the value at the variable address is
+// returned.  shit() calls to the holding QpStore reset the cached value.  This is useful for
+// avoiding duplicate computations if the lambda function call results in more than one
+// value/property being computed.
+template <typename T>
+class LambdaVarValuer : public QpValuer<T>
+{
+public:
+  virtual ~LambdaVarValuer() {}
+  void init(T * var, std::function<void(const Location &)> func)
+  {
+    _var = var;
+    _func = func;
+  }
+  virtual T get(const Location & loc) override
+  {
+    if (!_prev_loc || *_prev_loc != loc)
+      _func(loc);
+    _prev_loc = new Location(loc);
+    return *_var;
+  }
+
+  virtual void shift() override { _prev_loc = nullptr; }
+
+private:
+  std::function<void(const Location &)> _func;
+  T * _var;
+  Location * _prev_loc = nullptr;
+};
+
+template <typename T>
+class LambdaValuer : public QpValuer<T>
+{
+public:
+  virtual ~LambdaValuer() {}
+  void init(std::function<T(const Location &)> func) { _func = func; }
+  virtual T get(const Location & loc) override { return _func(loc); }
+private:
+  std::function<T(const Location &)> _func;
+};
+
 class Material
 {
 public:

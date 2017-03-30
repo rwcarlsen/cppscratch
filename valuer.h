@@ -53,6 +53,7 @@ public:
   virtual ~QpValuerBase() {}
   virtual size_t type() = 0;
   virtual std::string type_name() = 0;
+  virtual void shift() {}
 };
 
 template <typename T>
@@ -64,38 +65,6 @@ public:
   virtual T initialOld(const Location &) { return T{}; };
   virtual size_t type() final override { return typeid(T).hash_code(); }
   virtual std::string type_name() final override { return typeid(T).name(); }
-};
-
-template <typename T>
-class LambdaVarValuer : public QpValuer<T>
-{
-public:
-  virtual ~LambdaVarValuer() {}
-  void init(T * var, std::function<void(const Location &)> func)
-  {
-    _var = var;
-    _func = func;
-  }
-  virtual T get(const Location & loc) override
-  {
-    _func(loc);
-    return *_var;
-  }
-
-private:
-  std::function<void(const Location &)> _func;
-  T * _var;
-};
-
-template <typename T>
-class LambdaValuer : public QpValuer<T>
-{
-public:
-  virtual ~LambdaValuer() {}
-  void init(std::function<T(const Location &)> func) { _func = func; }
-  virtual T get(const Location & loc) override { return _func(loc); }
-private:
-  std::function<T(const Location &)> _func;
 };
 
 class Location
@@ -123,6 +92,11 @@ public:
   friend bool operator<(const Location & lhs, const Location & rhs)
   {
     return lhs.elem_id < rhs.elem_id || lhs.face_id < rhs.face_id || lhs.qp < rhs.qp;
+  }
+
+  friend bool operator!=(const Location & lhs, const Location & rhs)
+  {
+    return lhs.elem_id != rhs.elem_id || lhs.face_id != rhs.face_id || lhs.qp != rhs.qp;
   }
 
   unsigned int elem_id;
