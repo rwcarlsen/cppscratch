@@ -20,7 +20,7 @@ private:
 class Material
 {
 public:
-  Material(FEProblem & fep) : _props(fep.store()) {}
+  Material(FEProblem & fep) : _props(fep.props()) {}
 
   template <typename T>
   void addPropFunc(std::string name, std::function<T(const Location &)> func)
@@ -34,18 +34,15 @@ public:
   {
     auto valuer = new LambdaVarValuer<T>();
     valuer->init(var, func);
-    _props.addProp(valuer, name, true);
+    _props.add(valuer, name, true);
   }
 
 protected:
   QpStore & _props;
 };
 
-#define bind_prop_func(prop, func)                                                                 \
-  addPropFunc(prop, [this](const Location & loc) { return func(loc); })
-#define bind_prop_func_var(prop, func, var)                                                        \
-  addPropFuncVar([this](const Location & loc) {                                                    \
-    func(loc);                                                                                     \
-    return var;                                                                                    \
-  })
+#define bind_prop_func(prop, T, func)                                                              \
+  addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); })
+#define bind_prop_func_var(prop, T, func, var)                                                     \
+  addPropFuncVar<T>(prop, &var, [this](const Location & loc) { func(loc); })
 

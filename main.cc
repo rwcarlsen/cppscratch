@@ -108,7 +108,7 @@ scalingStudy()
   std::vector<unsigned int> prop_ids;
   for (auto & prop : prop_names)
     for (int i = 0; i < n_mats; i++)
-      prop_ids.push_back(fep.prop_id("mat" + std::to_string(i + 1) + "-" + prop));
+      prop_ids.push_back(fep.props().id("mat" + std::to_string(i + 1) + "-" + prop));
 
   for (int t = 0; t < n_steps; t++)
   {
@@ -118,7 +118,7 @@ scalingStudy()
       for (int i = 0; i < n_quad_points; i++)
       {
         for (auto & prop : prop_ids)
-          fep.getProp<double>(prop, Location(fep, n_quad_points, i));
+          fep.props().get<double>(prop, Location(&fep.props(), n_quad_points, i));
       }
     }
   }
@@ -130,32 +130,32 @@ basicPrintoutTest()
   FEProblem fep;
   MyMat mat(fep, "mymat", {"prop1", "prop7"});
 
-  std::cout << "mymat-prop1=" << fep.getProp<double>("mymat-prop1", Location(fep, 3, 1))
+  std::cout << "mymat-prop1=" << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 1))
             << std::endl;
-  std::cout << "mymat-prop1=" << fep.getProp<double>("mymat-prop1", Location(fep, 3, 2))
+  std::cout << "mymat-prop1=" << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 2))
             << std::endl;
-  std::cout << "mymat-prop7=" << fep.getProp<double>("mymat-prop7", Location(fep, 3, 2))
+  std::cout << "mymat-prop7=" << fep.props().get<double>("mymat-prop7", Location(&fep.props(), 3, 2))
             << std::endl;
 
   IncrementQpValuer iq;
-  auto id = fep.addProp(&iq, "inc-qp");
+  auto id = fep.props().add(&iq, "inc-qp");
 
-  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
   std::cout << "--- shift\n";
-  fep.shift();
-  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  fep.props().shift();
+  std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
   std::cout << "--- shift\n";
-  fep.shift();
-  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
-  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  fep.props().shift();
+  std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
   std::cout << "--- shift\n";
-  fep.shift();
-  std::cout << "inc-qp=" << fep.getProp<double>(id, Location(fep, 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.getPropOld<double>(id, Location(fep, 1, 0)) << std::endl;
+  fep.props().shift();
+  std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
 }
 
 void
@@ -166,7 +166,7 @@ wrongTypeTest()
   // throw error - wrong type.
   try
   {
-    fep.getProp<int>("mymat-prop1", Location(fep, 0, 1));
+    fep.props().get<int>("mymat-prop1", Location(&fep.props(), 0, 1));
   }
   catch (std::runtime_error err)
   {
@@ -183,14 +183,14 @@ cyclicalDepTest()
   DepQpValuer dq1(1, "dep2");
   DepQpValuer dq2(1, "dep3");
   DepQpValuer dq3(1, "dep1");
-  auto id1 = fep.addProp(&dq1, "dep1");
-  auto id2 = fep.addProp(&dq2, "dep2");
-  auto id3 = fep.addProp(&dq3, "dep3");
+  auto id1 = fep.props().add(&dq1, "dep1");
+  auto id2 = fep.props().add(&dq2, "dep2");
+  auto id3 = fep.props().add(&dq3, "dep3");
 
   // throw error - cyclical dependency
   try
   {
-    fep.getProp<double>(id1, Location(fep, 0, 1));
+    fep.props().get<double>(id1, Location(&fep.props(), 0, 1));
   }
   catch (std::runtime_error err)
   {
@@ -207,17 +207,17 @@ blockRestrictDemo()
   FEProblem fep;
   ConstQpValuer v1(42);
   ConstQpValuer v2(43);
-  fep.addProp(&v1, "v1");
-  fep.addProp(&v2, "v2");
+  fep.props().add(&v1, "v1");
+  fep.props().add(&v2, "v2");
 
   // User wanting to switch properties based on block would need to write sth like this:
   LambdaValuer<double> v;
   v.init([&fep](const Location & loc) {
     if (loc.block() > 5)
-      return fep.getProp<double>("v2", loc);
-    return fep.getProp<double>("v1", loc);
+      return fep.props().get<double>("v2", loc);
+    return fep.props().get<double>("v1", loc);
   });
-  fep.addProp(&v, "v");
+  fep.props().add(&v, "v");
 
   // test printout code should show:
   //     42
@@ -225,13 +225,13 @@ blockRestrictDemo()
   //     43
   //     43
   unsigned int block_id = 4;
-  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.getProp<double>("v", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
 
   // or you can use a convenience umbrella material like this that would normally be initialized
   // automatigically from the input file
@@ -243,13 +243,13 @@ blockRestrictDemo()
   //     43
   //     43
   block_id = 4;
-  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.getProp<double>("vv", Location(fep, 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
 }
 
 int
@@ -265,16 +265,16 @@ main(int argc, char ** argv)
   // MyMat mat(fep, "mymat", {"prop1", "prop7"});
   // MyDepOldMat matdepold(fep, "mymatdepold", "mymat-prop7");
 
-  // std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 1)) << std::endl;
-  // std::cout << fep.getProp<double>("mymat-prop1", Location(fep, 3, 2)) << std::endl;
-  // std::cout << fep.getProp<double>("mymat-prop7", Location(fep, 3, 2)) << std::endl;
+  // std::cout << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 1)) << std::endl;
+  // std::cout << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 2)) << std::endl;
+  // std::cout << fep.props().get<double>("mymat-prop7", Location(&fep.props(), 3, 2)) << std::endl;
 
   // std::cout << "printing older props:\n";
   // Location loc(fep, 1);
   // for (int i = 0; i < 8; i++)
   //{
-  //  std::cout << "\nprop7=" << fep.getProp<double>("mymat-prop7", loc) << std::endl;
-  //  std::cout << "    olderprop=" << fep.getProp<double>("mymatdepold", loc) << std::endl;
+  //  std::cout << "\nprop7=" << fep.props().get<double>("mymat-prop7", loc) << std::endl;
+  //  std::cout << "    olderprop=" << fep.props().get<double>("mymatdepold", loc) << std::endl;
   //}
   //
 

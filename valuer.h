@@ -5,8 +5,8 @@
 #include <list>
 #include <string>
 
-class FEProblem;
 class Location;
+class QpStore;
 
 template <typename T>
 class QpValuer
@@ -30,7 +30,7 @@ public:
   virtual T get(const Location & loc) override
   {
     _func(loc);
-    return _var;
+    return *_var;
   }
 
 private:
@@ -141,7 +141,7 @@ public:
 
   // It returns a unique, persistent id assigned to the added/registered value.
   template <typename T>
-  unsigned int add(QpValuer<T> * q, const std::string & name, bool take_ownership)
+  unsigned int add(QpValuer<T> * q, const std::string & name, bool take_ownership = false)
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
