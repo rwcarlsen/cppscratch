@@ -20,11 +20,11 @@ dataStore(std::ostream & s, T val)
 {
 }
 
-// This class is necessary to perform a "trick" to enable serialization to/from string streams. for
-// arbitrary types.  The virtual load/store functions dispatch down to the subclass QpValuer<T>
-// type-specific subclasses that can then call their type-specific load/store functions.  This
-// trick is also used to be able to clone and destruct object of arbitrary type without casting
-// them or fancy lambda hacks.
+// This class and the TypedValue class are necessary to perform a "trick" to enable serialization
+// to/from string streams for arbitrary types.  The virtual load/store functions dispatch down to
+// the subclass QpValuer<T> type-specific subclasses that can then call their type-specific
+// load/store functions.  This trick is also used to be able to clone and destruct objects of
+// arbitrary type without casting them or fancy lambda hacks.
 class Value
 {
 public:
@@ -46,6 +46,7 @@ public:
   T val;
 };
 
+// This class exists to accomplish the same "trick" as described in the Value class doc comment.
 class QpValuerBase
 {
 public:
