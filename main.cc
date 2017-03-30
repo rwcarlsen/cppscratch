@@ -65,20 +65,20 @@ public:
     bind_prop_func_var("demo-prop-c", double, propABC, _c);
   }
 
-  double prop1(const Location& loc) { return 42; }
+  double prop1(const Location & loc) { return 42; }
 
-  double prop2(const Location& loc)
+  double prop2(const Location & loc)
   {
     return 42 * loc.vals().get<double>("demo-prop1", loc);
     // you could obviously do the following for the same result:
     //    return 42 * prop1(loc);
   }
 
-  void propABC(const Location& loc)
+  void propABC(const Location & loc)
   {
     _a = loc.vals().get<double>("prop-from-another-material", loc);
-    _b = 2*_a;
-    _c = 2*_b;
+    _b = 2 * _a;
+    _c = 2 * _b;
   }
 
 private:
@@ -130,32 +130,37 @@ basicPrintoutTest()
   FEProblem fep;
   MyMat mat(fep, "mymat", {"prop1", "prop7"});
 
-  std::cout << "mymat-prop1=" << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 1))
-            << std::endl;
-  std::cout << "mymat-prop1=" << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 2))
-            << std::endl;
-  std::cout << "mymat-prop7=" << fep.props().get<double>("mymat-prop7", Location(&fep.props(), 3, 2))
-            << std::endl;
+  std::cout << "mymat-prop1="
+            << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 1)) << std::endl;
+  std::cout << "mymat-prop1="
+            << fep.props().get<double>("mymat-prop1", Location(&fep.props(), 3, 2)) << std::endl;
+  std::cout << "mymat-prop7="
+            << fep.props().get<double>("mymat-prop7", Location(&fep.props(), 3, 2)) << std::endl;
 
   IncrementQpValuer iq;
   auto id = fep.props().add(&iq, "inc-qp");
 
   std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0))
+            << std::endl;
   std::cout << "--- shift\n";
   fep.props().shift();
   std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0))
+            << std::endl;
   std::cout << "--- shift\n";
   fep.props().shift();
   std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0))
+            << std::endl;
   std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0))
+            << std::endl;
   std::cout << "--- shift\n";
   fep.props().shift();
   std::cout << "inc-qp=" << fep.props().get<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
-  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0)) << std::endl;
+  std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(&fep.props(), 1, 0))
+            << std::endl;
 }
 
 void
@@ -225,13 +230,17 @@ blockRestrictDemo()
   //     43
   //     43
   unsigned int block_id = 4;
-  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
 
   // or you can use a convenience umbrella material like this that would normally be initialized
   // automatigically from the input file
@@ -243,13 +252,17 @@ blockRestrictDemo()
   //     43
   //     43
   block_id = 4;
-  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(&fep.props(), 3, 1, 1, 0, block_id))
+            << std::endl;
 }
 
 int

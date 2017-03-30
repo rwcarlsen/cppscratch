@@ -45,4 +45,3 @@ protected:
   addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); })
 #define bind_prop_func_var(prop, T, func, var)                                                     \
   addPropFuncVar<T>(prop, &var, [this](const Location & loc) { func(loc); })
-

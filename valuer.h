@@ -10,9 +10,15 @@ class QpStore;
 
 // These are stubs for MOOSE data store/load functions.
 template <typename T>
-void dataLoad(std::istream& s, T val) {}
+void
+dataLoad(std::istream & s, T val)
+{
+}
 template <typename T>
-void dataStore(std::ostream& s, T val) {}
+void
+dataStore(std::ostream & s, T val)
+{
+}
 
 // This class is necessary to perform a "trick" to enable serialization to/from string streams. for
 // arbitrary types.  The virtual load/store functions dispatch down to the subclass QpValuer<T>
@@ -22,8 +28,8 @@ void dataStore(std::ostream& s, T val) {}
 class Value
 {
 public:
-  virtual void store(std::ostream& s) = 0;
-  virtual void load(std::istream& s) = 0;
+  virtual void store(std::ostream & s) = 0;
+  virtual void load(std::istream & s) = 0;
   virtual Value * clone() = 0;
   virtual ~Value() {}
 };
@@ -34,8 +40,8 @@ class TypedValue final : public Value
 public:
   TypedValue(T val) : val(val) {}
   virtual ~TypedValue() {}
-  virtual void store(std::ostream& s) override { dataStore(s, val); }
-  virtual void load(std::istream& s) override { dataLoad(s, val); }
+  virtual void store(std::ostream & s) override { dataStore(s, val); }
+  virtual void load(std::istream & s) override { dataLoad(s, val); }
   virtual Value * clone() override { return new TypedValue<T>(val); }
   T val;
 };
@@ -329,9 +335,9 @@ private:
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
-  std::map<unsigned int, std::map<Location, Value*>> _curr_vals;
+  std::map<unsigned int, std::map<Location, Value *>> _curr_vals;
   // Stores needed/requested old values.
-  std::map<unsigned int, std::map<Location, Value*>> _old_vals;
+  std::map<unsigned int, std::map<Location, Value *>> _old_vals;
 
   // map<value_id, external_curr>>
   // Stores whether or not the get<...>(...) function is ever called externally (from outside the
@@ -384,4 +390,3 @@ dataLoad(std::istream & stream, Value * v)
 {
   v->load(stream);
 }
-
