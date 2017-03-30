@@ -51,6 +51,42 @@ public:
   }
 };
 
+class DemoMaterial : public Material
+{
+public:
+  DemoMaterial(FEProblem & fep) : Material(fep)
+  {
+    bind_prop_func("demo-prop1", double, prop1);
+    bind_prop_func("demo-prop2", double, prop2);
+
+    // or maybe you want to calculate several properties together
+    bind_prop_func_var("demo-prop-a", double, propABC, _a);
+    bind_prop_func_var("demo-prop-b", double, propABC, _b);
+    bind_prop_func_var("demo-prop-c", double, propABC, _c);
+  }
+
+  double prop1(const Location& loc) { return 42; }
+
+  double prop2(const Location& loc)
+  {
+    return 42 * loc.vals().get<double>("demo-prop1", loc);
+    // you could obviously do the following for the same result:
+    //    return 42 * prop1(loc);
+  }
+
+  void propABC(const Location& loc)
+  {
+    _a = loc.vals().get<double>("prop-from-another-material", loc);
+    _b = 2*_a;
+    _c = 2*_b;
+  }
+
+private:
+  double _a;
+  double _b;
+  double _c;
+};
+
 void
 scalingStudy()
 {
