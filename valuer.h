@@ -14,7 +14,7 @@ class QpValuer
 public:
   virtual ~QpValuer() {}
   virtual T get(const Location &) = 0;
-  virtual T initialOld(const Location &) {return T{};};
+  virtual T initialOld(const Location &) { return T{}; };
 };
 
 template <typename T>
@@ -22,11 +22,20 @@ class LambdaVarValuer : public QpValuer<T>
 {
 public:
   virtual ~LambdaVarValuer() {}
-  void init(T* var, std::function<void(const Location &)> func) { _var = var; _func = func; }
-  virtual T get(const Location & loc) override { _func(loc); return _var;}
+  void init(T * var, std::function<void(const Location &)> func)
+  {
+    _var = var;
+    _func = func;
+  }
+  virtual T get(const Location & loc) override
+  {
+    _func(loc);
+    return _var;
+  }
+
 private:
   std::function<void(const Location &)> _func;
-  T* _var;
+  T * _var;
 };
 
 template <typename T>
@@ -43,7 +52,7 @@ private:
 class Location
 {
 public:
-  Location(QpStore* store,
+  Location(QpStore * store,
            unsigned int nqp,
            unsigned int qp,
            unsigned int elem = 1,
@@ -62,12 +71,9 @@ public:
   unsigned int qp() const { return _qp; }
   unsigned int nqp() const { return _nqp; }
   unsigned int block() const { return _block_id; }
-  unsigned int elem_id() const {return _elem_id;}
+  unsigned int elem_id() const { return _elem_id; }
   QpStore & vals() const { return *_store; }
-  inline Location parent() const
-  {
-    return Location(_store, _nqp, _qp, _elem_id, _elem_parent_id);
-  }
+  inline Location parent() const { return Location(_store, _nqp, _qp, _elem_id, _elem_parent_id); }
 
   friend bool operator<(const Location & lhs, const Location & rhs)
   {
@@ -82,7 +88,7 @@ private:
   unsigned int _qp;
 
   unsigned int _nqp;
-  QpStore* _store;
+  QpStore * _store;
 };
 
 // Unless otherwise noted, an 'id argument to a function refers to the unique id assigned to that
@@ -91,7 +97,7 @@ private:
 class QpStore
 {
 public:
-  QpStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}) {};
+  QpStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}){};
 
   ~QpStore()
   {
@@ -108,7 +114,7 @@ public:
     return _ids[name];
   }
 
-  inline void wantOld(const std::string & name) {_want_old[id(name)] = true;}
+  inline void wantOld(const std::string & name) { _want_old[id(name)] = true; }
 
   // addMapper allows the given value name to actually compute+return the value from another
   // valuer determined by calling the passed mapper function.  It returns a unique, persistent id
@@ -118,7 +124,8 @@ public:
   // compute+fetch the actual value.  It is a mechanism to allow one value/id to be a conditional
   // alias mapping to arbitrary other value id's depending on location and any other desired state
   // closed over by the mapper function.
-  unsigned int addMapper(const std::string & name, std::function<unsigned int(const Location&)> mapper)
+  unsigned int addMapper(const std::string & name,
+                         std::function<unsigned int(const Location &)> mapper)
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
@@ -126,7 +133,7 @@ public:
     _want_old.push_back(false);
     _types.push_back(0);
     _type_names.push_back("TYPELESS");
-    _valuer_delete_funcs.push_back([=](){});
+    _valuer_delete_funcs.push_back([=]() {});
     _mapper.push_back(mapper);
     _have_mapper.push_back(true);
     return id;
@@ -146,9 +153,9 @@ public:
     _have_mapper.push_back(false);
 
     if (take_ownership)
-      _valuer_delete_funcs.push_back([=](){delete q;});
+      _valuer_delete_funcs.push_back([=]() { delete q; });
     else
-      _valuer_delete_funcs.push_back([=](){});
+      _valuer_delete_funcs.push_back([=]() {});
 
     return id;
   }
@@ -221,7 +228,7 @@ public:
 
     // There was no previous old value, so we use the zero/default value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
-    T val = static_cast<QpValuer<T>*>(_valuers[id])->initialOld(loc);
+    T val = static_cast<QpValuer<T> *>(_valuers[id])->initialOld(loc);
     stageOld(id, loc, val);
     return val;
   }
@@ -237,14 +244,14 @@ public:
   // this to project values at old locations (srcs) to new locations (dsts) where they were never
   // explicitly computed before.  This needs to be called *after* the call to shift and *before*
   // calls to getOld.
-  void project(std::vector<const Location*> srcs, std::vector<const Location*> dsts)
+  void project(std::vector<const Location *> srcs, std::vector<const Location *> dsts)
   {
     for (unsigned int id = 0; id < _valuers.size(); id++)
     {
       for (int i = 0; i < srcs.size(); i++)
       {
-        auto& src = *srcs[i];
-        auto& dst = *dsts[i];
+        auto & src = *srcs[i];
+        auto & dst = *dsts[i];
         _delete_funcs[id](_old_vals[id][dst]);
         _old_vals[id][dst] = _old_vals[id][src];
         _delete_funcs[id](_old_vals[id][src]);
@@ -295,22 +302,23 @@ private:
   // deallocation functions for all _valuers that this store owns.
   std::vector<std::function<void()>> _valuer_delete_funcs;
   std::vector<bool> _have_mapper;
-  std::vector<std::function<unsigned int(const Location&)>> _mapper;
+  std::vector<std::function<unsigned int(const Location &)>> _mapper;
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
-  std::map<unsigned int, std::map<Location, void*>> _curr_vals;
+  std::map<unsigned int, std::map<Location, void *>> _curr_vals;
   // Stores needed/requested old values.
-  std::map<unsigned int, std::map<Location, void*>> _old_vals;
+  std::map<unsigned int, std::map<Location, void *>> _old_vals;
 
   // map<value_id, external_curr>>
-  // Stores whether or not the get<...>(...) function is ever called externally (from outside the QpStore
+  // Stores whether or not the get<...>(...) function is ever called externally (from outside the
+  // QpStore
   // class).  If this is never marked true, then getOld needs to invoke evaluation of the
   // current values on its own.
   std::map<unsigned int, bool> _external_curr;
   // map<value_id, map<[elem_id,face_id,quad-point,etc], _delete_func>>
   // Stores functions for deallocating void* stored data (i.e. for stateful/old values).
-  std::map<unsigned int, std::function<void(void*)>> _delete_funcs;
+  std::map<unsigned int, std::function<void(void *)>> _delete_funcs;
 
   // True to run error checking.
   bool _errcheck;

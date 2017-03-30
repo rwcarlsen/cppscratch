@@ -47,7 +47,7 @@ public:
   MyMat(FEProblem & fep, std::string base, std::vector<std::string> props) : Material(fep)
   {
     for (int i = 0; i < props.size(); i++)
-      addPropFunc<double>(base + "-" + props[i], [=](const Location& loc){return 42000+i;});
+      addPropFunc<double>(base + "-" + props[i], [=](const Location & loc) { return 42000 + i; });
   }
 };
 
@@ -176,11 +176,11 @@ blockRestrictDemo()
 
   // User wanting to switch properties based on block would need to write sth like this:
   LambdaValuer<double> v;
-  v.init([&fep](const Location& loc) {
-      if (loc.block() > 5)
-        return fep.getProp<double>("v2", loc);
-      return fep.getProp<double>("v1", loc);
-      });
+  v.init([&fep](const Location & loc) {
+    if (loc.block() > 5)
+      return fep.getProp<double>("v2", loc);
+    return fep.getProp<double>("v1", loc);
+  });
   fep.addProp(&v, "v");
 
   // test printout code should show:

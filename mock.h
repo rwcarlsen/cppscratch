@@ -11,7 +11,7 @@ class FEProblem
 public:
   FEProblem(bool cyclical_detection = false) : _props(cyclical_detection) {}
 
-  QpStore& props() {return _props;}
+  QpStore & props() { return _props; }
 
 private:
   QpStore _props;
