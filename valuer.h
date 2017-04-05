@@ -6,7 +6,6 @@
 #include <string>
 
 class Location;
-class QpStore;
 
 // These are stubs for MOOSE data store/load functions.
 template <typename T>
@@ -22,7 +21,7 @@ dataStore(std::ostream & s, T val)
 
 // This class and the TypedValue class are necessary to perform a "trick" to enable serialization
 // to/from string streams for arbitrary types.  For Value class users that store a generic Value
-// ptr/ref, the virtual load/store functions dispatch down to the subclass QpValuer<T>
+// ptr/ref, the virtual load/store functions dispatch down to the subclass Valuer<T>
 // (type-specific) subclasses that can then call their type-specific load/store functions.  This
 // trick is also used to be able to clone and destruct objects of arbitrary type without casting
 // them or fancy lambda hacks.
@@ -48,22 +47,22 @@ public:
 };
 
 // This class exists to accomplish the same "trick" as described in the Value class doc comment.
-class QpValuerBase
+class ValuerBase
 {
 public:
-  virtual ~QpValuerBase() {}
+  virtual ~ValuerBase() {}
   virtual size_t type() = 0;
   virtual std::string type_name() = 0;
-  // This function is a hook that is called whenenver a QpStore this valuer is registered with
+  // This function is a hook that is called whenenver a ValueStore this valuer is registered with
   // performs a "shift" operation (i.e. a simulation step or moving current values to old, etc.).
   virtual void shift() {}
 };
 
 template <typename T>
-class QpValuer : public QpValuerBase
+class Valuer : public ValuerBase
 {
 public:
-  virtual ~QpValuer() {}
+  virtual ~Valuer() {}
   virtual T get(const Location &) = 0;
   virtual T initialOld(const Location &) { return T{}; };
   virtual size_t type() final override { return typeid(T).hash_code(); }
@@ -73,25 +72,13 @@ public:
 class Location
 {
 public:
-  Location(QpStore * store,
-           unsigned int nqp,
+  Location(unsigned int nqp,
            unsigned int qp,
            unsigned int elem = 1,
            unsigned int block_id = 0,
            unsigned int face_id = 0)
-    : nqp(nqp),
-      qp(qp),
-      _store(store),
-      elem_id(elem),
-      block_id(block_id),
-      face_id(face_id)
+    : nqp(nqp), qp(qp), elem_id(elem), block_id(block_id), face_id(face_id)
   {
-  }
-  QpStore & vals() const { return *_store; }
-
-  friend bool operator<(const Location & lhs, const Location & rhs)
-  {
-    return lhs.elem_id < rhs.elem_id || lhs.face_id < rhs.face_id || lhs.qp < rhs.qp;
   }
 
   friend bool operator!=(const Location & lhs, const Location & rhs)
@@ -104,20 +91,27 @@ public:
   unsigned int block_id;
   unsigned int qp;
   unsigned int nqp;
+};
 
-private:
-  QpStore * _store;
+class QpKey
+{
+public:
+  bool operator()(const Location & lhs, const Location & rhs) const
+  {
+    return lhs.elem_id < rhs.elem_id || lhs.face_id < rhs.face_id || lhs.qp < rhs.qp;
+  }
 };
 
 // Unless otherwise noted, an 'id argument to a function refers to the unique id assigned to that
 // added/registered value - i.e. the id returned by the add(...), addMapper(...), and id(...)
 // functions.
-class QpStore
+template <typename Cmp>
+class ValueStore
 {
 public:
-  QpStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}){};
+  ValueStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}){};
 
-  ~QpStore()
+  ~ValueStore()
   {
     for (int i = 0; i < _valuers.size(); i++)
       if (_own_valuer[i])
@@ -154,7 +148,7 @@ public:
 
   // It returns a unique, persistent id assigned to the added/registered value.
   template <typename T>
-  unsigned int add(QpValuer<T> * q, const std::string & name, bool take_ownership = false)
+  unsigned int add(Valuer<T> * q, const std::string & name, bool take_ownership = false)
   {
     return add(name, q, {}, take_ownership);
   }
@@ -173,7 +167,7 @@ public:
       checkType<T>(id);
     }
 
-    auto val = static_cast<QpValuer<T> *>(_valuers[id])->get(loc);
+    auto val = static_cast<Valuer<T> *>(_valuers[id])->get(loc);
     if (_want_old[id] || _want_older[id])
     {
       // mark this property as computed if we need its old value and stage/store value
@@ -237,7 +231,7 @@ public:
   }
 
   // Moves stored "current" values to "older" values, discarding any previous "older" values.
-  // Notifies all added/registered QpValuers of the shift by calling their shift functions.
+  // Notifies all added/registered Valuers of the shift by calling their shift functions.
   void shift()
   {
     _older_vals.swap(_old_vals);
@@ -252,7 +246,7 @@ private:
   // necsesarily the items they hold) should generally NOT be modified by anything other than this
   // function.
   unsigned int add(const std::string & name,
-                   QpValuerBase * q,
+                   ValuerBase * q,
                    std::function<unsigned int(const Location &)> mapper,
                    bool take_ownership)
   {
@@ -263,12 +257,12 @@ private:
     _want_older.push_back(false);
     _own_valuer.push_back(take_ownership);
     _mapper.push_back(mapper);
-    _have_mapper.push_back(q != nullptr);
+    _have_mapper.push_back(q == nullptr);
     return id;
   }
 
   template <typename T>
-  T getStored(std::map<unsigned int, std::map<Location, Value *>> & vals,
+  T getStored(std::map<unsigned int, std::map<Location, Value *, Cmp>> & vals,
               std::vector<bool> & want,
               unsigned int id,
               const Location & loc)
@@ -303,13 +297,13 @@ private:
 
     // There was no previous old value, so we use the zero/default value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
-    T val = static_cast<QpValuer<T> *>(_valuers[id])->initialOld(loc);
+    T val = static_cast<Valuer<T> *>(_valuers[id])->initialOld(loc);
     stageOld(id, loc, val);
     return val;
   }
 
-  // Stores/saves a computed value so it can be used as old next iteration/step (i.e. after shift
-  // call).
+  // Stores/saves a computed value so it can be used as old on the next iteration/step (i.e. after
+  // shift call).
   template <typename T>
   void stageOld(unsigned int id, const Location & loc, const T & val)
   {
@@ -337,7 +331,7 @@ private:
   // the value id - i.e. map<value_id, [something]>
 
   // map<value_id, valuer>
-  std::vector<QpValuerBase *> _valuers;
+  std::vector<ValuerBase *> _valuers;
   // true if we own the memory of the valuer
   std::vector<bool> _own_valuer;
   // map<value_id, want_old>. True if an old version of the value has (ever) been requested.
@@ -349,16 +343,15 @@ private:
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
-  std::map<unsigned int, std::map<Location, Value *>> _curr_vals;
+  std::map<unsigned int, std::map<Location, Value *, Cmp>> _curr_vals;
   // Stores needed/requested old values.
-  std::map<unsigned int, std::map<Location, Value *>> _old_vals;
+  std::map<unsigned int, std::map<Location, Value *, Cmp>> _old_vals;
   // Stores needed/requested older values.
-  std::map<unsigned int, std::map<Location, Value *>> _older_vals;
+  std::map<unsigned int, std::map<Location, Value *, Cmp>> _older_vals;
 
   // map<value_id, external_curr>>
   // Stores whether or not the get<...>(...) function is ever called externally (from outside the
-  // QpStore
-  // class).  If this is never marked true, then getOld needs to invoke evaluation of the
+  // ValueStore class).  If this is never marked true, then getOld needs to invoke evaluation of the
   // current values on its own.
   std::map<unsigned int, bool> _external_curr;
 
@@ -369,6 +362,8 @@ private:
   // detection. getOld[er] retrieval breaks dependency chains.
   std::list<std::map<unsigned int, bool>> _cycle_stack;
 };
+
+typedef ValueStore<QpKey> QpStore;
 
 ////////////////////////
 // specialization for storing/loading Location objects and arbitrary typed values stored in Value

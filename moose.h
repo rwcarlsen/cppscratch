@@ -11,9 +11,7 @@ class FEProblem
 {
 public:
   FEProblem(bool errcheck = false) : _props(errcheck) {}
-
   QpStore & props() { return _props; }
-
 private:
   QpStore _props;
 };
@@ -27,7 +25,7 @@ private:
 // value/property being computed.  This allows accomodates single "material" classes that want to
 // define/calculate several properties that may depend on each other.
 template <typename T>
-class LambdaVarValuer : public QpValuer<T>
+class LambdaVarValuer : public Valuer<T>
 {
 public:
   virtual ~LambdaVarValuer() {}
@@ -53,7 +51,7 @@ private:
 };
 
 template <typename T>
-class LambdaValuer : public QpValuer<T>
+class LambdaValuer : public Valuer<T>
 {
 public:
   virtual ~LambdaValuer() {}
