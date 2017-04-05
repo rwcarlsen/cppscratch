@@ -21,10 +21,11 @@ dataStore(std::ostream & s, T val)
 }
 
 // This class and the TypedValue class are necessary to perform a "trick" to enable serialization
-// to/from string streams for arbitrary types.  The virtual load/store functions dispatch down to
-// the subclass QpValuer<T> type-specific subclasses that can then call their type-specific
-// load/store functions.  This trick is also used to be able to clone and destruct objects of
-// arbitrary type without casting them or fancy lambda hacks.
+// to/from string streams for arbitrary types.  For Value class users that store a generic Value
+// ptr/ref, the virtual load/store functions dispatch down to the subclass QpValuer<T>
+// (type-specific) subclasses that can then call their type-specific load/store functions.  This
+// trick is also used to be able to clone and destruct objects of arbitrary type without casting
+// them or fancy lambda hacks.
 class Value
 {
 public:
@@ -53,6 +54,8 @@ public:
   virtual ~QpValuerBase() {}
   virtual size_t type() = 0;
   virtual std::string type_name() = 0;
+  // This function is a hook that is called whenenver a QpStore this valuer is registered with
+  // performs a "shift" operation (i.e. a simulation step or moving current values to old, etc.).
   virtual void shift() {}
 };
 
@@ -74,20 +77,17 @@ public:
            unsigned int nqp,
            unsigned int qp,
            unsigned int elem = 1,
-           unsigned int parent_id = 0,
            unsigned int block_id = 0,
            unsigned int face_id = 0)
     : nqp(nqp),
       qp(qp),
       _store(store),
-      elem_parent_id(parent_id),
       elem_id(elem),
       block_id(block_id),
       face_id(face_id)
   {
   }
   QpStore & vals() const { return *_store; }
-  inline Location parent() const { return Location(_store, nqp, qp, elem_id, elem_parent_id); }
 
   friend bool operator<(const Location & lhs, const Location & rhs)
   {
@@ -100,7 +100,6 @@ public:
   }
 
   unsigned int elem_id;
-  unsigned int elem_parent_id;
   unsigned int face_id;
   unsigned int block_id;
   unsigned int qp;
@@ -238,10 +237,13 @@ public:
   }
 
   // Moves stored "current" values to "older" values, discarding any previous "older" values.
+  // Notifies all added/registered QpValuers of the shift by calling their shift functions.
   void shift()
   {
     _older_vals.swap(_old_vals);
     _old_vals.swap(_curr_vals);
+    for (auto valuer : _valuers)
+      valuer->shift();
   }
 
 private:

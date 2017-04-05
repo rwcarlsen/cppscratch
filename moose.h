@@ -19,12 +19,13 @@ private:
 };
 
 // Defines a value/property computed by calling a specified (lambda) function and then returning
-// the value stored at a particular variable address/pointer location.  Caches the most recent
+// the value stored at a particular address/pointer location.  Caches the most recent
 // location evaluated since the last shift() call.  If the location is the same for later calls,
 // the (lambda) function is not called again and just the value at the variable address is
-// returned.  shit() calls to the holding QpStore reset the cached value.  This is useful for
+// returned.  shift() calls to the holding QpStore reset the cached value.  This is useful for
 // avoiding duplicate computations if the lambda function call results in more than one
-// value/property being computed.
+// value/property being computed.  This allows accomodates single "material" classes that want to
+// define/calculate several properties that may depend on each other.
 template <typename T>
 class LambdaVarValuer : public QpValuer<T>
 {
