@@ -235,8 +235,8 @@ blockRestrictDemo()
   block_id++;
   std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;
 
-  // or you can use a convenience umbrella material like this that would normally be initialized
-  // automatigically from the input file
+  // or you can use a convenience umbrella material like this that would normally be
+  // created/initialized automatigically from the input file
   // (i.e. [Material] type=Umbrella; prop="vv"; subprop='v1 0 1 2 3 4'; etc.):
   Umbrella um(fep, "vv", {{"v1", {0, 1, 2, 3, 4, 5}}, {"v2", {6, 7, 8}}});
   // test printout code should show:
