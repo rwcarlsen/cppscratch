@@ -91,7 +91,7 @@ public:
   unsigned int block_id;
   unsigned int qp;
   unsigned int nqp;
-  void * payload = nullptr;
+  void * payload = nullptr; // maybe a bad idea i.e. with restart+custom ValueStore Cmp template
 };
 
 class QpKey
