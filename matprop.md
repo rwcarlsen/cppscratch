@@ -61,7 +61,7 @@ Strengths:
   confusing).
 
 * Fine-grained property dependency tracking works implicitly and naturally via the function call
-  trees for fetching property values.  Property values are never calculated where/when they aren't
+  graph for fetching property values.  Property values are never calculated where/when they aren't
   needed.
 
 * Allows users to store stateful values on the mesh at their own custom locations. They just
@@ -72,8 +72,9 @@ Strengths:
 * Whether or not displaced mesh locations should be used comes in on the passed in Location
   objects.
 
-* Plenty fast enough - can retrieve a few billion (constant) properties per minute on my machine
-  in serial
+* Plenty fast enough - can retrieve a few billion (constant-valued) properties per minute on my
+  machine in serial
 
 * Code is relatively simple and relatively short w.r.t. the current/legacy system.
 
+* Completely decoupled from MOOSE world and IO - easy to unit test thoroughly.
