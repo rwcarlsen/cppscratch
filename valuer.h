@@ -103,7 +103,7 @@ public:
   }
 };
 
-// Unless otherwise noted, an 'id argument to a function refers to the unique id assigned to that
+// Unless otherwise noted, an 'id' argument to a function refers to the unique id assigned to that
 // added/registered value - i.e. the id returned by the add(...), addMapper(...), and id(...)
 // functions.
 template <typename Cmp>

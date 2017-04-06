@@ -56,7 +56,7 @@ public:
 class DemoMaterial : public Material
 {
 public:
-  DemoMaterial(FEProblem & fep) : Material(fep)
+  DemoMaterial(FEProblem & fep, std::set<unsigned int> blocks = {}) : Material(fep, blocks)
   {
     bind_prop_func("demo-prop1", double, prop1);
     bind_prop_func("demo-prop2", double, prop2);
@@ -252,6 +252,14 @@ blockRestrictDemo()
   std::cout << fep.props().get<double>("vv", Location(3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
   std::cout << fep.props().get<double>("vv", Location(3, 1, 1, 0, block_id)) << std::endl;
+
+  // or you can use a convenience blocks param arg to the material constructor.  This is more
+  // analogous to current moose practice where you manually block-restrict each material object,
+  // but is not necessary for performance-only cases and is only necessary for multiple material
+  // objects mapped to one property name cases - in which case it is more natural/simple to put
+  // the all the mappings together using e.g. an Umbrella material class.
+  DemoMaterial dm1(fep, {0, 1, 2, 3, 4, 5});
+  DemoMaterial dm2(fep, {6, 7, 8});
 }
 
 int

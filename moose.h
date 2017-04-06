@@ -64,25 +64,69 @@ private:
 class Material
 {
 public:
-  Material(FEProblem & fep) : _props(fep.props()) {}
+  Material(FEProblem & fep, std::set<unsigned int> blocks = {})
+    : _props(fep.props()), _blocks(blocks)
+  {
+  }
 
   template <typename T>
   void addPropFunc(std::string name, std::function<T(const Location &)> func)
   {
     auto valuer = new LambdaValuer<T>();
     valuer->init(func);
-    _props.add(valuer, name, true);
+
+    if (_blocks.size() == 0)
+      _props.add(valuer, name, true);
+    else
+    {
+      // NOTE: while you *can* do something like this, we don't really need it.  For cases when
+      // you are trying to improve performance by only evaluating the property on locations where
+      // it is necessary - that already happens automagically with this architecture.  For cases
+      // where you want to split the mesh domain and map a single property name to multiple
+      // material/property objects, it is more clear to have that entire mapping in one place e.g.
+      // via the Umbrella material class rather than scattered around in the config of several
+      // material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
+      unsigned int id = _props.add(valuer, name + "__inner", true);
+      _props.addMapper(name, [this, id, name](const Location & loc) {
+        if (_blocks.count(loc.block_id) > 0)
+          return id;
+        throw std::runtime_error("property '" + name + "' is not defined on block " +
+                                 std::to_string(loc.block_id));
+      });
+    }
   }
   template <typename T>
   void addPropFuncVar(std::string name, T * var, std::function<void(const Location &)> func)
   {
     auto valuer = new LambdaVarValuer<T>();
     valuer->init(var, func);
-    _props.add(valuer, name, true);
+
+    if (_blocks.size() == 0)
+      _props.add(valuer, name, true);
+    else
+    {
+      // NOTE: while you *can* do something like this, we don't really need it.  For cases when
+      // you are trying to improve performance by only evaluating the property on locations where
+      // it is necessary - that already happens automagically with this architecture.  For cases
+      // where you want to split the mesh domain and map a single property name to multiple
+      // material/property objects, it is more clear to have that entire mapping in one place e.g.
+      // via the Umbrella material class rather than scattered around in the config of several
+      // material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
+      unsigned int id = _props.add(valuer, name + "__inner", true);
+      _props.addMapper(name, [this, id, name](const Location & loc) {
+        if (_blocks.count(loc.block_id) > 0)
+          return id;
+        throw std::runtime_error("property '" + name + "' is not defined on block " +
+                                 std::to_string(loc.block_id));
+      });
+    }
   }
 
 protected:
   QpStore & _props;
+
+private:
+  std::set<unsigned int> _blocks;
 };
 
 #define bind_prop_func(prop, T, func)                                                              \
@@ -125,7 +169,7 @@ public:
         if (it.second.count(loc.block_id) > 0)
           return _props.id(it.first);
       }
-      throw std::runtime_error("property " + prop_name + " is not defined on block " +
+      throw std::runtime_error("property '" + prop_name + "' is not defined on block " +
                                std::to_string(loc.block_id));
     });
   }
