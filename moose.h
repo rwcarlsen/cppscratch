@@ -61,6 +61,21 @@ private:
   std::function<T(const Location &)> _func;
 };
 
+class MaterialPropertyInterface
+{
+public:
+  MaterialPropertyInterface(FEProblem & fep) : _fep(fep) {}
+  // TODO: auto-generate Location/loc from FEProblem.assembly()
+  template <typename T>
+  T prop(const std::string & name)
+  {
+    return _fep.props().get<T>(name, Location(0, 0, 0));
+  }
+
+private:
+  FEProblem & _fep;
+};
+
 class Material
 {
 public:
