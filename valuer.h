@@ -337,9 +337,6 @@ private:
   // map<value_id, value_name>
   std::vector<std::string> _names;
 
-  // the following contiguous block of member variables are all vectors where the index represents
-  // the value id - i.e. map<value_id, [something]>
-
   // map<value_id, valuer>
   std::vector<ValuerBase *> _valuers;
   // true if we own the memory of the valuer
@@ -348,7 +345,9 @@ private:
   std::vector<bool> _want_old;
   // map<value_id, want_older>. True if an older version of the value has (ever) been requested.
   std::vector<bool> _want_older;
+  // map<value_id, valuer>
   std::vector<bool> _have_mapper;
+  // map<value_id, mapper>
   std::vector<std::function<unsigned int(const Location &)>> _mapper;
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
