@@ -91,6 +91,7 @@ public:
   unsigned int block_id;
   unsigned int qp;
   unsigned int nqp;
+  void * payload = nullptr;
 };
 
 class QpKey
@@ -162,7 +163,13 @@ public:
     if (_errcheck)
     {
       if (_cycle_stack.back().count(id) > 0)
-        throw std::runtime_error("cyclical value dependency detected");
+      {
+        std::string items;
+        for (auto & item : _cycle_stack.back())
+          items += "', '" + _names[item.first];
+        throw std::runtime_error("cyclical value dependency detected (reuse of '" + _names[id] +
+                                 "') involving " + items.substr(3) + "'");
+      }
       _cycle_stack.back()[id] = true;
       checkType<T>(id);
     }
@@ -252,6 +259,7 @@ private:
   {
     unsigned int id = _valuers.size();
     _ids[name] = id;
+    _names.push_back(name);
     _valuers.push_back(q);
     _want_old.push_back(false);
     _want_older.push_back(false);
@@ -326,6 +334,8 @@ private:
 
   // map<value_name, value_id>
   std::map<std::string, unsigned int> _ids;
+  // map<value_id, value_name>
+  std::vector<std::string> _names;
 
   // the following contiguous block of member variables are all vectors where the index represents
   // the value id - i.e. map<value_id, [something]>
