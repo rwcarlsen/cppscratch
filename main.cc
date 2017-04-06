@@ -71,14 +71,14 @@ public:
 
   double prop2(const Location & loc)
   {
-    return 42 * _props.get<double>("demo-prop1", loc);
+    return 42 * prop<double>("demo-prop1", loc);
     // you could obviously do the following for the same result:
     //    return 42 * prop1(loc);
   }
 
   void propABC(const Location & loc)
   {
-    _a = _props.get<double>("prop-from-another-material", loc);
+    _a = prop<double>("prop-from-another-material", loc);
     _b = 2 * _a;
     _c = 2 * _b;
   }

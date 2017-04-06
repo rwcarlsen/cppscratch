@@ -70,6 +70,12 @@ public:
   }
 
   template <typename T>
+  T prop(const std::string & name, const Location & loc)
+  {
+    return _props.get<T>(name, loc);
+  }
+
+  template <typename T>
   void addPropFunc(std::string name, std::function<T(const Location &)> func)
   {
     auto valuer = new LambdaValuer<T>();
