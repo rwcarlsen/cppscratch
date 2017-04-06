@@ -65,6 +65,7 @@ public:
   virtual ~Valuer() {}
   virtual T get(const Location &) = 0;
   virtual T initialOld(const Location &) { return T{}; };
+  virtual T initialOlder(const Location &) { return T{}; };
   virtual size_t type() final override { return typeid(T).hash_code(); }
   virtual std::string type_name() final override { return typeid(T).name(); }
 };
@@ -175,12 +176,11 @@ public:
     }
 
     auto val = static_cast<Valuer<T> *>(_valuers[id])->get(loc);
+    _external_curr[id] = true;
+
+    // mark this property as computed if we need its old value and stage/store value
     if (_want_old[id] || _want_older[id])
-    {
-      // mark this property as computed if we need its old value and stage/store value
-      _external_curr[id] = true;
       stageOld(id, loc, val);
-    }
     if (_errcheck)
       _cycle_stack.back().erase(id);
     return val;
@@ -207,7 +207,7 @@ public:
   template <typename T>
   T getOlder(unsigned int id, const Location & loc)
   {
-    return getStored<T>(_older_vals, _want_older, id, loc);
+    return getStored<T>(_older_vals, _want_older, id, loc, true);
   }
 
   template <typename T>
@@ -266,6 +266,7 @@ private:
     _own_valuer.push_back(take_ownership);
     _mapper.push_back(mapper);
     _have_mapper.push_back(q == nullptr);
+    _external_curr.push_back(false);
     return id;
   }
 
@@ -273,7 +274,8 @@ private:
   T getStored(std::map<unsigned int, std::map<Location, Value *, Cmp>> & vals,
               std::vector<bool> & want,
               unsigned int id,
-              const Location & loc)
+              const Location & loc,
+              bool older = false)
   {
     if (_have_mapper[id])
       return getStored<T>(vals, want, _mapper[id](loc), loc);
@@ -303,10 +305,11 @@ private:
     if (vals[id].count(loc) > 0)
       return static_cast<TypedValue<T> *>(vals[id][loc])->val;
 
-    // There was no previous old value, so we use the zero/default value.  We also need to
+    // There was no previous old value, so we use its initial value.  We also need to
     // stage/store if there is no corresponding stored current value to become the next old value.
     T val = static_cast<Valuer<T> *>(_valuers[id])->initialOld(loc);
-    stageOld(id, loc, val);
+    if (older)
+      val = static_cast<Valuer<T> *>(_valuers[id])->initialOlder(loc);
     return val;
   }
 
@@ -362,7 +365,7 @@ private:
   // Stores whether or not the get<...>(...) function is ever called externally (from outside the
   // ValueStore class).  If this is never marked true, then getOld needs to invoke evaluation of the
   // current values on its own.
-  std::map<unsigned int, bool> _external_curr;
+  std::vector<bool> _external_curr;
 
   // True to run error checking.
   bool _errcheck;
