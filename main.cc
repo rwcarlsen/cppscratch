@@ -56,7 +56,7 @@ public:
 class DemoMaterial : public Material
 {
 public:
-  DemoMaterial(FEProblem & fep, std::set<unsigned int> blocks = {}) : Material(fep, blocks)
+  DemoMaterial(FEProblem & fep, std::set<BlockId> blocks = {}) : Material(fep, blocks)
   {
     bind_prop_func("demo-prop1", double, prop1);
     bind_prop_func("demo-prop2", double, prop2);
@@ -107,7 +107,7 @@ scalingStudy()
   for (int i = 0; i < n_mats; i++)
     new MyMat(fep, "mat" + std::to_string(i + 1), prop_names);
 
-  std::vector<unsigned int> prop_ids;
+  std::vector<ValId> prop_ids;
   for (auto & prop : prop_names)
     for (int i = 0; i < n_mats; i++)
       prop_ids.push_back(fep.props().id("mat" + std::to_string(i + 1) + "-" + prop));
@@ -226,7 +226,7 @@ blockRestrictDemo()
   //     42
   //     43
   //     43
-  unsigned int block_id = 4;
+  BlockId block_id = 4;
   std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;
   block_id++;
   std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;

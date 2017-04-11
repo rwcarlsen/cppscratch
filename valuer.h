@@ -7,6 +7,9 @@
 #include <functional>
 #include <typeinfo>
 
+typedef unsigned int ValId;
+typedef unsigned int BlockId;
+
 class Location;
 
 // These are stubs for MOOSE data store/load functions.
@@ -78,7 +81,7 @@ public:
   Location(unsigned int nqp,
            unsigned int qp,
            unsigned int elem = 1,
-           unsigned int block_id = 0,
+           BlockId block_id = 0,
            unsigned int face_id = 0)
     : nqp(nqp), qp(qp), elem_id(elem), block_id(block_id), face_id(face_id)
   {
@@ -91,7 +94,7 @@ public:
 
   unsigned int elem_id;
   unsigned int face_id;
-  unsigned int block_id;
+  BlockId block_id;
   unsigned int qp;
   unsigned int nqp;
   void * payload = nullptr; // maybe a bad idea i.e. with restart+custom ValueStore Cmp template
@@ -113,7 +116,7 @@ template <typename Cmp>
 class ValueStore
 {
 public:
-  ValueStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, std::map<unsigned int, bool>{}){};
+  ValueStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, std::map<ValId, bool>{}){};
 
   ~ValueStore()
   {
@@ -124,7 +127,7 @@ public:
 
   // Returns the id of the named, *previously* added/registered value or mapper.  Throws an error
   // if name has never been added/registered.
-  inline unsigned int id(const std::string & name)
+  inline ValId id(const std::string & name)
   {
     if (_ids.count(name) == 0)
       throw std::runtime_error("value " + name + " doesn't exist (yet?)");
@@ -142,8 +145,8 @@ public:
   // compute+fetch the actual value.  It is a mechanism to allow one value/id to be a conditional
   // alias mapping to arbitrary other value id's depending on location and any other desired state
   // closed over by the mapper function.
-  unsigned int addMapper(const std::string & name,
-                         std::function<unsigned int(const Location &)> mapper)
+  ValId addMapper(const std::string & name,
+                         std::function<ValId(const Location &)> mapper)
   {
     return add(name, nullptr, mapper, false);
   }
@@ -152,13 +155,13 @@ public:
 
   // It returns a unique, persistent id assigned to the added/registered value.
   template <typename T>
-  unsigned int add(Valuer<T> * q, const std::string & name, bool take_ownership = false)
+  ValId add(Valuer<T> * q, const std::string & name, bool take_ownership = false)
   {
     return add(name, q, {}, take_ownership);
   }
 
   template <typename T>
-  T get(unsigned int id, const Location & loc)
+  T get(ValId id, const Location & loc)
   {
     if (_have_mapper[id])
       return get<T>(_mapper[id](loc), loc);
@@ -195,7 +198,7 @@ public:
   }
 
   template <typename T>
-  T getOld(unsigned int id, const Location & loc)
+  T getOld(ValId id, const Location & loc)
   {
     return getStored<T>(_old_vals, _want_old, id, loc);
   }
@@ -207,7 +210,7 @@ public:
   }
 
   template <typename T>
-  T getOlder(unsigned int id, const Location & loc)
+  T getOlder(ValId id, const Location & loc)
   {
     return getStored<T>(_older_vals, _want_older, id, loc, true);
   }
@@ -225,7 +228,7 @@ public:
   // calls to getOld.
   void project(std::vector<const Location *> srcs, std::vector<const Location *> dsts)
   {
-    for (unsigned int id = 0; id < _valuers.size(); id++)
+    for (ValId id = 0; id < _valuers.size(); id++)
     {
       for (int i = 0; i < srcs.size(); i++)
       {
@@ -254,12 +257,12 @@ private:
   // (not
   // necsesarily the items they hold) should generally NOT be modified by anything other than this
   // function.
-  unsigned int add(const std::string & name,
+  ValId add(const std::string & name,
                    ValuerBase * q,
-                   std::function<unsigned int(const Location &)> mapper,
+                   std::function<ValId(const Location &)> mapper,
                    bool take_ownership)
   {
-    unsigned int id = _valuers.size();
+    ValId id = _valuers.size();
     _ids[name] = id;
     _names.push_back(name);
     _valuers.push_back(q);
@@ -273,9 +276,9 @@ private:
   }
 
   template <typename T>
-  T getStored(std::map<unsigned int, std::map<Location, Value *, Cmp>> & vals,
+  T getStored(std::map<ValId, std::map<Location, Value *, Cmp>> & vals,
               std::vector<bool> & want,
-              unsigned int id,
+              ValId id,
               const Location & loc,
               bool older = false)
   {
@@ -318,7 +321,7 @@ private:
   // Stores/saves a computed value so it can be used as old on the next iteration/step (i.e. after
   // shift call).
   template <typename T>
-  void stageOld(unsigned int id, const Location & loc, const T & val)
+  void stageOld(ValId id, const Location & loc, const T & val)
   {
     auto prev = _curr_vals[id][loc];
     if (prev != nullptr)
@@ -329,7 +332,7 @@ private:
   // Used to ensure the c++ type of a value being retrieved (i.e. T) is the same as the c++ type
   // that was stored/added there.
   template <typename T>
-  inline void checkType(unsigned int id)
+  inline void checkType(ValId id)
   {
     auto valuer = _valuers[id];
     if (valuer && typeid(T).hash_code() != valuer->type())
@@ -338,7 +341,7 @@ private:
   }
 
   // map<value_name, value_id>
-  std::map<std::string, unsigned int> _ids;
+  std::map<std::string, ValId> _ids;
   // map<value_id, value_name>
   std::vector<std::string> _names;
 
@@ -353,15 +356,15 @@ private:
   // map<value_id, valuer>
   std::vector<bool> _have_mapper;
   // map<value_id, mapper>
-  std::vector<std::function<unsigned int(const Location &)>> _mapper;
+  std::vector<std::function<ValId(const Location &)>> _mapper;
 
   // map<value_id, map<[elem_id,face_id,quad-point,etc], val>>>.
   // Caches any computed/retrieved values for which old values are needed.
-  std::map<unsigned int, std::map<Location, Value *, Cmp>> _curr_vals;
+  std::map<ValId, std::map<Location, Value *, Cmp>> _curr_vals;
   // Stores needed/requested old values.
-  std::map<unsigned int, std::map<Location, Value *, Cmp>> _old_vals;
+  std::map<ValId, std::map<Location, Value *, Cmp>> _old_vals;
   // Stores needed/requested older values.
-  std::map<unsigned int, std::map<Location, Value *, Cmp>> _older_vals;
+  std::map<ValId, std::map<Location, Value *, Cmp>> _older_vals;
 
   // map<value_id, external_curr>>
   // Stores whether or not the get<...>(...) function is ever called externally (from outside the
@@ -374,7 +377,7 @@ private:
   // list<map<value_id, true>>. In sequences of values depending on other values, this tracks what
   // values have been used in dependency chains - enabling cyclical value dependency
   // detection. getOld[er] retrieval breaks dependency chains.
-  std::list<std::map<unsigned int, bool>> _cycle_stack;
+  std::list<std::map<ValId, bool>> _cycle_stack;
 };
 
 typedef ValueStore<QpKey> QpStore;

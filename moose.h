@@ -79,7 +79,7 @@ private:
 class Material
 {
 public:
-  Material(FEProblem & fep, std::set<unsigned int> blocks = {})
+  Material(FEProblem & fep, std::set<BlockId> blocks = {})
     : _props(fep.props()), _blocks(blocks)
   {
   }
@@ -107,7 +107,7 @@ public:
       // material/property objects, it is more clear to have that entire mapping in one place e.g.
       // via the Umbrella material class rather than scattered around in the config of several
       // material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
-      unsigned int id = _props.add(valuer, name + "__inner", true);
+      ValId id = _props.add(valuer, name + "__inner", true);
       _props.addMapper(name, [this, id, name](const Location & loc) {
         if (_blocks.count(loc.block_id) > 0)
           return id;
@@ -133,7 +133,7 @@ public:
       // material/property objects, it is more clear to have that entire mapping in one place e.g.
       // via the Umbrella material class rather than scattered around in the config of several
       // material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
-      unsigned int id = _props.add(valuer, name + "__inner", true);
+      ValId id = _props.add(valuer, name + "__inner", true);
       _props.addMapper(name, [this, id, name](const Location & loc) {
         if (_blocks.count(loc.block_id) > 0)
           return id;
@@ -147,7 +147,7 @@ protected:
   QpStore & _props;
 
 private:
-  std::set<unsigned int> _blocks;
+  std::set<BlockId> _blocks;
 };
 
 #define bind_prop_func(prop, T, func)                                                              \
@@ -181,7 +181,7 @@ class Umbrella : public Material
 public:
   Umbrella(FEProblem & fep,
            std::string prop_name,
-           std::map<std::string, std::set<unsigned int>> subprops)
+           std::map<std::string, std::set<BlockId>> subprops)
     : Material(fep)
   {
     _props.addMapper(prop_name, [this, prop_name, subprops](const Location & loc) {
