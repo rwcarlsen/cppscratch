@@ -4,6 +4,8 @@
 #include <vector>
 #include <list>
 #include <string>
+#include <functional>
+#include <typeinfo>
 
 class Location;
 
@@ -111,7 +113,7 @@ template <typename Cmp>
 class ValueStore
 {
 public:
-  ValueStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, {}){};
+  ValueStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, std::map<unsigned int, bool>{}){};
 
   ~ValueStore()
   {
