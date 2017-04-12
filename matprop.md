@@ -18,7 +18,9 @@ Progress implementing new features:
 Weaknesses:
 
 * Property value retrieval becomes a function call instead of a member access - a bit more
-  verbose - i.e. `return _myprop[_qp]` becomes `return prop<Real>("myprop", loc)`;
+  verbose - i.e. `_myprop[_qp]` becomes `prop<Real>("myprop", loc)`; however setting/calculating a
+  property doesn't have to be any more verbose than before using helpers that bind
+  functions/variables to mimic the existing paradigm.
 
 Strengths:
 
@@ -54,7 +56,8 @@ Strengths:
   ```
 
   noting that ``AProp`` and ``AnotherProp`` don't need any handling of block id or any other logic
-  for this to work.
+  for this to just work.  The same no-special-handling applies if we want to support element-id,
+  or any other restriction methods
 
 * No complicated memory swapping/tracking with sentinels, etc.  No scattered memory locations
   across Material object instances reserved to store/swap in computed values (less memory, less
@@ -70,7 +73,7 @@ Strengths:
 * Users don't need to worry about quadrature point indexing on property values.
 
 * Whether or not displaced mesh locations should be used comes in on the passed in Location
-  objects.
+  objects implicitly.
 
 * Plenty fast enough - can retrieve a few billion (constant-valued) properties per minute on my
   machine in serial

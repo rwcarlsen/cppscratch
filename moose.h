@@ -37,8 +37,10 @@ public:
   virtual T get(const Location & loc) override
   {
     if (!_prev_loc || *_prev_loc != loc)
+    {
       _func(loc);
-    _prev_loc = new Location(loc);
+      _prev_loc = new Location(loc);
+    }
     return *_var;
   }
 
@@ -59,6 +61,32 @@ public:
   virtual T get(const Location & loc) override { return _func(loc); }
 private:
   std::function<T(const Location &)> _func;
+};
+
+// Since a single material property might be used several times by different things at a single
+// time-step,mesh-loc (relatively) consecutively, we can avoid recomputing each of these times by
+// wrapping the valuers representing those properties with a CacheValuer.  You could even
+// configure the ValueStore to wrap them automatically with something like this.
+template <typename T>
+class CacheValuer : public Valuer<T>
+{
+public:
+  CacheValuer(Valuer<T> * v) : _valuer(v) {}
+  virtual T get(const Location & loc) override
+  {
+    if (!_prev_loc || *_prev_loc != loc)
+    {
+      _cache = _valuer.get(loc);
+      _prev_loc = new Location(loc);
+    }
+    return _cache;
+  }
+
+  virtual void shift() override { _prev_loc = nullptr; }
+private:
+  Location * _prev_loc = nullptr;
+  Valuer<T> * _valuer;
+  T _cache;
 };
 
 class MaterialPropertyInterface

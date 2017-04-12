@@ -199,6 +199,7 @@ public:
     return add(name, q, {}, take_ownership);
   }
 
+  // Computes and returns the current value for the given value id at the specified mesh location.
   template <typename T>
   T get(ValId id, const Location & loc)
   {
@@ -230,30 +231,40 @@ public:
     return val;
   }
 
+  // Alias for get(id(name), loc)
   template <typename T>
   inline double get(const std::string & name, const Location & loc)
   {
     return get<T>(id(name), loc);
   }
 
+  // Computes and returns the previous value for the given value id at the specified mesh
+  // location.  "Previous" refers to the value "get(...)" returned prior to the most recent call
+  // to the ValueStore's shift() function (i.e. the value on the previous time step).
   template <typename T>
   T getOld(ValId id, const Location & loc)
   {
     return getStored<T>(_old_vals, _want_old, id, loc);
   }
 
+  // Alias for getOld(id(name), loc)
   template <typename T>
   T getOld(const std::string & name, const Location & loc)
   {
     return getOld<T>(id(name), loc);
   }
 
+  // Computes and returns the previous previous value for the given value id at the specified mesh
+  // location.  "Previous previous" refers to the value "get(...)" returned prior to the call
+  // before the most recent call to the ValueStore's shift() function (i.e. the value on the
+  // previous previous time step).
   template <typename T>
   T getOlder(ValId id, const Location & loc)
   {
     return getStored<T>(_older_vals, _want_older, id, loc, true);
   }
 
+  // Alias to getOlder(id(name), loc)
   template <typename T>
   T getOlder(const std::string & name, const Location & loc)
   {
