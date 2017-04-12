@@ -147,7 +147,8 @@ template <typename Cmp>
 class ValueStore
 {
 public:
-  ValueStore(bool errcheck = false) : _errcheck(errcheck), _cycle_stack(1, std::map<ValId, bool>{}){};
+  ValueStore(bool errcheck = false)
+    : _errcheck(errcheck), _cycle_stack(1, std::map<ValId, bool>{}){};
 
   ~ValueStore()
   {
@@ -180,8 +181,7 @@ public:
   // compute+fetch the actual value.  It is a mechanism to allow one value/id to be a conditional
   // alias mapping to arbitrary other value id's depending on location and any other desired state
   // closed over by the mapper function.
-  ValId addMapper(const std::string & name,
-                         std::function<ValId(const Location &)> mapper)
+  ValId addMapper(const std::string & name, std::function<ValId(const Location &)> mapper)
   {
     return add(name, nullptr, mapper, false);
   }
@@ -297,9 +297,9 @@ private:
   // necsesarily the items they hold) should generally NOT be modified by anything other than this
   // function.
   ValId add(const std::string & name,
-                   ValuerBase * q,
-                   std::function<ValId(const Location &)> mapper,
-                   bool take_ownership)
+            ValuerBase * q,
+            std::function<ValId(const Location &)> mapper,
+            bool take_ownership)
   {
     ValId id = _valuers.size();
     _ids[name] = id;

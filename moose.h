@@ -79,10 +79,7 @@ private:
 class Material
 {
 public:
-  Material(FEProblem & fep, std::set<BlockId> blocks = {})
-    : _props(fep.props()), _blocks(blocks)
-  {
-  }
+  Material(FEProblem & fep, std::set<BlockId> blocks = {}) : _props(fep.props()), _blocks(blocks) {}
 
   template <typename T>
   T prop(const std::string & name, const Location & loc)
