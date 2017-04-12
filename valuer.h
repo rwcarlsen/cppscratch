@@ -56,20 +56,38 @@ class ValuerBase
 {
 public:
   virtual ~ValuerBase() {}
+  // Returns a unique int identifying the C++ type of the stored value.  Used for error checking
+  // for compatible types in the ValueStore.
   virtual size_t type() = 0;
+  // Returns the (nick)name for the C++ type of the stored value.  Used for error checking
+  // for compatible types in the ValueStore.
   virtual std::string type_name() = 0;
   // This function is a hook that is called whenenver a ValueStore this valuer is registered with
   // performs a "shift" operation (i.e. a simulation step or moving current values to old, etc.).
   virtual void shift() {}
 };
 
+// Valuer is a base class for all mesh-location-specific values/properties managed/stored by the
+// ValueStore.  Creating custom properties/values is as simple as inheriting from the Valuer class
+// and overriding the 'get' function to compute and return the desired value.  Valuer objects
+// should be added to a ValueStore where they can be retrieved and otherwise managed in helpful
+// ways.
 template <typename T>
 class Valuer : public ValuerBase
 {
 public:
   virtual ~Valuer() {}
+  // Computes and return a value at the specified mesh location.  get should be idempotent - i.e.
+  // consecutive calls to get (with no significant simulation state changes between them) should
+  // result in the same answer.
   virtual T get(const Location &) = 0;
+  // Optionally return an initial condition "old" value.  This is used if an old (i.e. previous
+  // simulation time step) version of this value is requested, but there was no prior current
+  // value to become the old value.
   virtual T initialOld(const Location &) { return T{}; };
+  // Optionally return an initial condition "older" value.  This is used if an older (i.e.
+  // previous previous simulation time step) version of this value is requested, but there was no
+  // prior old value to become the older value.
   virtual T initialOlder(const Location &) { return T{}; };
   virtual size_t type() final override { return typeid(T).hash_code(); }
   virtual std::string type_name() final override { return typeid(T).name(); }
@@ -100,6 +118,8 @@ public:
   void * payload = nullptr; // maybe a bad idea i.e. with restart+custom ValueStore Cmp template
 };
 
+// A Custom comparator for creating a ValueStore that stores values on the mesh by a combined
+// element id, face id, and quadrature point index key.
 class QpKey
 {
 public:
@@ -109,6 +129,17 @@ public:
   }
 };
 
+// Manages the calculation of named+id'd values by mesh location and optionally handles storage
+// and retrieval of stateful/prior versions of those values.  Sets of named values (e.g.
+// simulation-global) can be registered with a particular ValueStore.  When values are retrieved
+// by name or id, cyclical dependency detection is performed (values can depend on each-other i.e.
+// a registered Valuer's get function can retrieve a value from the same ValueStore),
+// type-consistency checking is performed, and requests for old/older versions of particular
+// values are tracked triggering their storage automatically.
+//
+// Values can be tracked/stored at custom locations on the mesh by writing a custom Comparator
+// that defines a unique ordering for Location objects (e.g. see QpKey comparator for an example).
+//
 // Unless otherwise noted, an 'id' argument to a function refers to the unique id assigned to that
 // added/registered value - i.e. the id returned by the add(...), addMapper(...), and id(...)
 // functions.
@@ -134,7 +165,11 @@ public:
     return _ids[name];
   }
 
+  // Explicitly marks the named value (which must have already been added) for
+  // tracking of its stateful old values.
   inline void wantOld(const std::string & name) { _want_old[id(name)] = true; }
+  // Explicitly marks the named value (which must have already been added) for
+  // tracking of its stateful older values.
   inline void wantOlder(const std::string & name) { _want_older[id(name)] = true; }
 
   // addMapper allows the given value name to actually compute+return the value from another
@@ -151,9 +186,13 @@ public:
     return add(name, nullptr, mapper, false);
   }
 
+  // Turn error checking on/off (true to enable).
   void errcheck(bool check) { _errcheck = check; }
 
-  // It returns a unique, persistent id assigned to the added/registered value.
+  // Registers a valuer with the given name to be tracked by the ValueStore. If take_ownership is
+  // true, the ValueStore will manage the memory of q and handle its deallocation. It returns a
+  // unique, persistent id assigned to the added/registered value.  Calls to the ValueStore's get
+  // using the passed name will trigger calls to q's get function.
   template <typename T>
   ValId add(Valuer<T> * q, const std::string & name, bool take_ownership = false)
   {
