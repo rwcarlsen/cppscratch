@@ -161,9 +161,10 @@ public:
   // if name has never been added/registered.
   inline ValId id(const std::string & name)
   {
-    if (_ids.count(name) == 0)
+    std::map<std::string, ValId>::iterator it = _ids.find(name);
+    if (it == _ids.end())
       throw std::runtime_error("value " + name + " doesn't exist (yet?)");
-    return _ids[name];
+    return it->second;
   }
 
   // Explicitly marks the named value (which must have already been added) for

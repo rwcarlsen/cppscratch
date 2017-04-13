@@ -76,7 +76,7 @@ public:
   {
     if (!_prev_loc || *_prev_loc != loc)
     {
-      _cache = _valuer.get(loc);
+      _cache = _valuer->get(loc);
       _prev_loc = new Location(loc);
     }
     return _cache;
@@ -125,13 +125,13 @@ public:
       _props.add(valuer, name, true);
     else
     {
-      // NOTE: while you *can* do something like this, we don't really need it.  For cases when
+      // NOTE: while you *can* do something like this, it is much less necessary.  For cases when
       // you are trying to improve performance by only evaluating the property on locations where
       // it is necessary - that already happens automagically with this architecture.  For cases
       // where you want to split the mesh domain and map a single property name to multiple
-      // material/property objects, it is more clear to have that entire mapping in one place e.g.
-      // via the Umbrella material class rather than scattered around in the config of several
-      // material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
+      // material/property objects, it may be more clear to have that entire mapping in one place
+      // e.g.  via the Umbrella material class rather than scattered around in the config of
+      // several material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
       ValId id = _props.add(valuer, name + "__inner", true);
       _props.addMapper(name, [this, id, name](const Location & loc) {
         if (_blocks.count(loc.block_id) > 0)
@@ -151,13 +151,13 @@ public:
       _props.add(valuer, name, true);
     else
     {
-      // NOTE: while you *can* do something like this, we don't really need it.  For cases when
+      // NOTE: while you *can* do something like this, it is much less necessary.  For cases when
       // you are trying to improve performance by only evaluating the property on locations where
       // it is necessary - that already happens automagically with this architecture.  For cases
       // where you want to split the mesh domain and map a single property name to multiple
-      // material/property objects, it is more clear to have that entire mapping in one place e.g.
-      // via the Umbrella material class rather than scattered around in the config of several
-      // material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
+      // material/property objects, it may be more clear to have that entire mapping in one place
+      // e.g.  via the Umbrella material class rather than scattered around in the config of
+      // several material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
       ValId id = _props.add(valuer, name + "__inner", true);
       _props.addMapper(name, [this, id, name](const Location & loc) {
         if (_blocks.count(loc.block_id) > 0)
