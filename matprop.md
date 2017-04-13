@@ -22,6 +22,9 @@ Weaknesses:
   property doesn't have to be any more verbose than before using helpers that bind
   functions/variables to mimic the existing paradigm.
 
+* Still need to figure out how to get Valuer class to support a reference type as the template
+  parameter.
+
 Strengths:
 
 * Preserves not storing/cacheing/reusing material properties between computations unless needed
