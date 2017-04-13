@@ -75,8 +75,15 @@ Strengths:
 * Whether or not displaced mesh locations should be used comes in on the passed in Location
   objects implicitly.
 
-* Plenty fast enough - can retrieve a few billion (constant-valued) properties per minute on my
-  machine in serial
+* Fast enough - can retrieve a few billion (constant-valued) properties per minute on my
+  machine in serial (by id).  The more convenient by-name retrieval method is about ~10 times
+  slower.  Simulated with:
+
+  props_per_mat = 10;
+  n_mats = 10;
+  n_steps = 10;
+  n_quad_points = 1000000;
+  n_repeat_calcs = 5;
 
 * Code is relatively simple and relatively short w.r.t. the current/legacy system.
 

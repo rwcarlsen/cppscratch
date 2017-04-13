@@ -58,13 +58,13 @@ class DemoMaterial : public Material
 public:
   DemoMaterial(FEProblem & fep, std::set<BlockId> blocks = {}) : Material(fep, blocks)
   {
-    bind_prop_func("demo-prop1", double, prop1);
-    bind_prop_func("demo-prop2", double, prop2);
+    bind_prop_func("demo-prop1", prop1, double);
+    bind_prop_func("demo-prop2", prop2, double);
 
     // or maybe you want to calculate several properties together
-    bind_prop_func_var("demo-prop-a", double, propABC, _a);
-    bind_prop_func_var("demo-prop-b", double, propABC, _b);
-    bind_prop_func_var("demo-prop-c", double, propABC, _c);
+    bind_prop_func_var("demo-prop-a", propABC, _a);
+    bind_prop_func_var("demo-prop-b", propABC, _b);
+    bind_prop_func_var("demo-prop-c", propABC, _c);
   }
 
   double prop1(const Location & loc) { return 42; }
@@ -72,7 +72,7 @@ public:
   double prop2(const Location & loc)
   {
     return 42 * prop<double>("demo-prop1", loc);
-    // you could obviously do the following for the same result:
+    // you could also do the following for the same result:
     //    return 42 * prop1(loc);
   }
 
@@ -108,9 +108,10 @@ scalingStudy()
     new MyMat(fep, "mat" + std::to_string(i + 1), prop_names);
 
   std::vector<ValId> prop_ids;
+  std::vector<std::string> prop_nms;
   for (auto & prop : prop_names)
     for (int i = 0; i < n_mats; i++)
-      prop_ids.push_back(fep.props().id("mat" + std::to_string(i + 1) + "-" + prop));
+      prop_nms.push_back("mat" + std::to_string(i + 1) + "-" + prop);
 
   for (int t = 0; t < n_steps; t++)
   {
@@ -119,7 +120,7 @@ scalingStudy()
     {
       for (int i = 0; i < n_quad_points; i++)
       {
-        for (auto & prop : prop_ids)
+        for (auto & prop : prop_nms)
           fep.props().get<double>(prop, Location(n_quad_points, i));
       }
     }

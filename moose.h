@@ -175,10 +175,10 @@ private:
   std::set<BlockId> _blocks;
 };
 
-#define bind_prop_func(prop, T, func)                                                              \
+#define bind_prop_func(prop, func, T)                                                              \
   addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); })
-#define bind_prop_func_var(prop, T, func, var)                                                     \
-  addPropFuncVar<T>(prop, &var, [this](const Location & loc) { func(loc); })
+#define bind_prop_func_var(prop, func, var)                                                        \
+  addPropFuncVar(prop, &var, [this](const Location & loc) { func(loc); })
 
 // Generate a standardized derivative property name using a base name plus an (ordered) sequence of
 // independent variable names of each partial derivative.  1 varaible implies 1st order
