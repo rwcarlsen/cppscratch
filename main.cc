@@ -108,10 +108,9 @@ scalingStudy()
     new MyMat(fep, "mat" + std::to_string(i + 1), prop_names);
 
   std::vector<ValId> prop_ids;
-  std::vector<std::string> prop_nms;
   for (auto & prop : prop_names)
     for (int i = 0; i < n_mats; i++)
-      prop_nms.push_back("mat" + std::to_string(i + 1) + "-" + prop);
+      prop_ids.push_back(fep.props().id("mat" + std::to_string(i + 1) + "-" + prop));
 
   for (int t = 0; t < n_steps; t++)
   {
@@ -120,7 +119,7 @@ scalingStudy()
     {
       for (int i = 0; i < n_quad_points; i++)
       {
-        for (auto & prop : prop_nms)
+        for (auto & prop : prop_ids)
           fep.props().get<double>(prop, Location(n_quad_points, i));
       }
     }
