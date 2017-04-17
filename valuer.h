@@ -33,10 +33,14 @@ dataStore(std::ostream & s, T val)
 class Value
 {
 public:
-  virtual void store(std::ostream & s) = 0;
-  virtual void load(std::istream & s) = 0;
-  virtual Value * clone() = 0;
+  virtual void store(std::ostream & s) {}
+  virtual void load(std::istream & s) {}
+  virtual Value * clone() { return new Value(*this); }
   virtual ~Value() {}
+
+  // For contexts where values are used in map keys directly/indirectly or are compared, this
+  // function is used.
+  virtual bool lessThan(const Value &) { return false; }
 };
 
 template <typename T>
@@ -101,8 +105,18 @@ public:
            unsigned int elem = 1,
            BlockId block_id = 0,
            unsigned int face_id = 0)
-    : nqp(nqp), qp(qp), elem_id(elem), block_id(block_id), face_id(face_id)
+    : nqp(nqp), qp(qp), elem_id(elem), block_id(block_id), face_id(face_id), custom(nullptr)
   {
+  }
+
+  Location(const Location & loc)
+  {
+    elem_id = loc.elem_id;
+    face_id = loc.face_id;
+    block_id = loc.block_id;
+    qp = loc.qp;
+    nqp = loc.nqp;
+    custom.reset(loc.custom ? loc.custom->clone() : nullptr);
   }
 
   friend bool operator!=(const Location & lhs, const Location & rhs)
@@ -115,7 +129,8 @@ public:
   BlockId block_id;
   unsigned int qp;
   unsigned int nqp;
-  void * payload = nullptr; // maybe a bad idea i.e. with restart+custom ValueStore Cmp template
+  // Allows users to include arbitrary extra info in custom key sorting in value-store.
+  std::unique_ptr<Value> custom;
 };
 
 // A Custom comparator for creating a ValueStore that stores values on the mesh by a combined
@@ -125,7 +140,11 @@ class QpKey
 public:
   bool operator()(const Location & lhs, const Location & rhs) const
   {
-    return lhs.elem_id < rhs.elem_id || lhs.face_id < rhs.face_id || lhs.qp < rhs.qp;
+    return (lhs.elem_id != rhs.elem_id && lhs.elem_id < rhs.elem_id) ||
+           (lhs.face_id != rhs.face_id && lhs.face_id < rhs.face_id) ||
+           (lhs.qp != rhs.qp && lhs.qp < rhs.qp) ||
+           (lhs.custom && rhs.custom && lhs.custom->lessThan(*rhs.custom.get())) ||
+           (lhs.custom != nullptr && rhs.custom == nullptr);
   }
 };
 
@@ -195,7 +214,7 @@ public:
   // unique, persistent id assigned to the added/registered value.  Calls to the ValueStore's get
   // using the passed name will trigger calls to q's get function.
   template <typename T>
-  ValId add(Valuer<T> * q, const std::string & name, bool take_ownership = false)
+  ValId add(const std::string & name, Valuer<T> * q, bool take_ownership = false)
   {
     return add(name, q, {}, take_ownership);
   }

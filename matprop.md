@@ -25,6 +25,11 @@ Weaknesses:
 * Still need to figure out how to get Valuer class to support a reference type as the template
   parameter.
 
+* In addition to using the property when you want to, you have to separately (in objects that are
+  materialpropertyinterface subclasses) mark properties as stateful-wanted or suffer a one-step
+  lag where an initial-value placeholder is used the first time you call getOld[er] and further
+  calls will then automatically track stage/store future old values.
+
 Strengths:
 
 * Preserves not storing/cacheing/reusing material properties between computations unless needed
@@ -70,8 +75,10 @@ Strengths:
   graph for fetching property values.  Property values are never calculated where/when they aren't
   needed.
 
-* Allows users to store stateful values on the mesh at their own custom locations. They just
-  create a custom comparator and ``ValueStore<CustomCmp> _custom_store;`` wherever they need.
+* Allows users to store stateful values on the mesh at their own custom locations. They can just
+  include their own value in the Location.custom field to key off of in addition to the normal
+  location values.  Or they just create a custom comparator and ``ValueStore<CustomCmp>
+  _custom_store;`` wherever they need.
 
 * Users don't need to worry about quadrature point indexing on property values.
 

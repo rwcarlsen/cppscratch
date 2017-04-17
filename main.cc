@@ -127,6 +127,40 @@ scalingStudy()
 };
 
 void
+customKeyTest()
+{
+  class ByNode : public Value
+  {
+  public:
+    ByNode(unsigned int i) : my_special_id(i) {}
+    virtual bool lessThan(const Value & rhs)
+    {
+      return my_special_id < static_cast<const ByNode &>(rhs).my_special_id;
+    }
+    unsigned int my_special_id = 0;
+  };
+
+  std::cout << "**** customKeyTest ****\n";
+  FEProblem fep;
+  fep.props().add("prop1", new ConstValuer(7), true);
+  fep.props().add("prop2", new ConstValuer(42), true);
+  fep.props().wantOld("prop1");
+  fep.props().wantOld("prop2");
+
+  Location loc1(1, 1);
+  loc1.custom.reset(new ByNode(1));
+  Location loc2(1, 1);
+  loc2.custom.reset(new ByNode(2));
+
+  std::cout << "prop1=" << fep.props().get<double>("prop1", loc1) << std::endl;
+  std::cout << "prop2=" << fep.props().get<double>("prop2", loc2) << std::endl;
+  std::cout << "shift()\n";
+  fep.props().shift();
+  std::cout << "prop1_old=" << fep.props().getOld<double>("prop1", loc1) << std::endl;
+  std::cout << "prop2_old=" << fep.props().getOld<double>("prop2", loc2) << std::endl;
+}
+
+void
 basicPrintoutTest()
 {
   FEProblem fep;
@@ -140,7 +174,7 @@ basicPrintoutTest()
             << std::endl;
 
   IncrementValuer iq;
-  auto id = fep.props().add(&iq, "inc-qp");
+  auto id = fep.props().add("inc-qp", &iq);
 
   std::cout << "inc-qp=" << fep.props().get<double>(id, Location(1, 0)) << std::endl;
   std::cout << "  old inc-qp=" << fep.props().getOld<double>(id, Location(1, 0)) << std::endl;
@@ -185,9 +219,9 @@ cyclicalDepTest()
   DepValuer dq1(fep.props(), 1, "dep2");
   DepValuer dq2(fep.props(), 1, "dep3");
   DepValuer dq3(fep.props(), 1, "dep1");
-  auto id1 = fep.props().add(&dq1, "dep1");
-  auto id2 = fep.props().add(&dq2, "dep2");
-  auto id3 = fep.props().add(&dq3, "dep3");
+  auto id1 = fep.props().add("dep1", &dq1);
+  auto id2 = fep.props().add("dep2", &dq2);
+  auto id3 = fep.props().add("dep3", &dq3);
 
   // throw error - cyclical dependency
   try
@@ -209,8 +243,8 @@ blockRestrictDemo()
   FEProblem fep;
   ConstValuer v1(42);
   ConstValuer v2(43);
-  fep.props().add(&v1, "v1");
-  fep.props().add(&v2, "v2");
+  fep.props().add("v1", &v1);
+  fep.props().add("v2", &v2);
 
   // User wanting to switch properties based on block would need to write sth like this:
   LambdaValuer<double> v;
@@ -219,7 +253,7 @@ blockRestrictDemo()
       return fep.props().get<double>("v2", loc);
     return fep.props().get<double>("v1", loc);
   });
-  fep.props().add(&v, "v");
+  fep.props().add("v", &v);
 
   // test printout code should show:
   //     42
@@ -265,8 +299,9 @@ blockRestrictDemo()
 int
 main(int argc, char ** argv)
 {
-  scalingStudy();
+  // scalingStudy();
   basicPrintoutTest();
+  customKeyTest();
   wrongTypeTest();
   cyclicalDepTest();
   blockRestrictDemo();

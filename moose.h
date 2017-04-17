@@ -122,7 +122,7 @@ public:
     valuer->init(func);
 
     if (_blocks.size() == 0)
-      _props.add(valuer, name, true);
+      _props.add(name, valuer, true);
     else
     {
       // NOTE: while you *can* do something like this, it is much less necessary.  For cases when
@@ -132,7 +132,7 @@ public:
       // material/property objects, it may be more clear to have that entire mapping in one place
       // e.g.  via the Umbrella material class rather than scattered around in the config of
       // several material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
-      ValId id = _props.add(valuer, name + "__inner", true);
+      ValId id = _props.add(name + "__inner", valuer, true);
       _props.addMapper(name, [this, id, name](const Location & loc) {
         if (_blocks.count(loc.block_id) > 0)
           return id;
@@ -148,7 +148,7 @@ public:
     valuer->init(var, func);
 
     if (_blocks.size() == 0)
-      _props.add(valuer, name, true);
+      _props.add(name, valuer, true);
     else
     {
       // NOTE: while you *can* do something like this, it is much less necessary.  For cases when
@@ -158,7 +158,7 @@ public:
       // material/property objects, it may be more clear to have that entire mapping in one place
       // e.g.  via the Umbrella material class rather than scattered around in the config of
       // several material objects (i.e. the current Materials' "blocks='0 1, etc.'" config).
-      ValId id = _props.add(valuer, name + "__inner", true);
+      ValId id = _props.add(name + "__inner", valuer, true);
       _props.addMapper(name, [this, id, name](const Location & loc) {
         if (_blocks.count(loc.block_id) > 0)
           return id;
