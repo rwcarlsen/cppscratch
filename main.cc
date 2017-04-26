@@ -62,9 +62,9 @@ public:
     bind_prop_func("demo-prop2", prop2, double);
 
     // or maybe you want to calculate several properties together
-    bind_prop_func_var("demo-prop-a", propABC, _a);
-    bind_prop_func_var("demo-prop-b", propABC, _b);
-    bind_prop_func_var("demo-prop-c", propABC, _c);
+    bind_prop("demo-prop-a", propABC, _a);
+    bind_prop("demo-prop-b", propABC, _b);
+    bind_prop("demo-prop-c", propABC, _c);
   }
 
   double prop1(const Location & loc) { return 42; }

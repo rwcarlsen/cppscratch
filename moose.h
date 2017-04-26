@@ -195,7 +195,7 @@ private:
 
 #define bind_prop_func(prop, func, T, ...)                                                         \
   addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); }, {__VA_ARGS__})
-#define bind_prop_func_var(prop, func, var, ...)                                                   \
+#define bind_prop(prop, func, var, ...)                                                            \
   addPropFuncVar(prop, &var, [this](const Location & loc) { func(loc); }, {__VA_ARGS__})
 
 // Generate a standardized derivative property name using a base name plus an (ordered) sequence of
