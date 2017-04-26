@@ -102,11 +102,11 @@ public:
 void
 scalingStudy()
 {
-  unsigned int props_per_mat = 10;
-  unsigned int n_mats = 10;
   unsigned int n_steps = 10;
-  unsigned int n_quad_points = 1000000;
   unsigned int n_repeat_calcs = 5;
+  unsigned int n_quad_points = 1000000;
+  unsigned int n_mats = 10;
+  unsigned int props_per_mat = 10;
 
   FEProblem fep;
 
@@ -118,10 +118,15 @@ scalingStudy()
     new MyMat(fep, "mat" + std::to_string(i + 1), prop_names);
 
   std::vector<ValId> prop_ids;
+  std::vector<std::string> prop_nms;
   for (auto & prop : prop_names)
     for (int i = 0; i < n_mats; i++)
+    {
       prop_ids.push_back(fep.props().id("mat" + std::to_string(i + 1) + "-" + prop));
+      prop_nms.push_back("mat" + std::to_string(i + 1) + "-" + prop);
+    }
 
+  std::vector<std::string> needs = {""};
   for (int t = 0; t < n_steps; t++)
   {
     std::cout << "step " << t + 1 << std::endl;
@@ -129,8 +134,9 @@ scalingStudy()
     {
       for (int i = 0; i < n_quad_points; i++)
       {
+        // for (auto & prop : prop_nms) // to benchmark slower by-string name retrieval
         for (auto & prop : prop_ids)
-          fep.props().get<double>(prop, Location(n_quad_points, i));
+          fep.props().get<double>(prop, Location(n_quad_points, i), needs);
       }
     }
   }
@@ -162,10 +168,13 @@ customKeyTest()
   Location loc2(1, 1);
   loc2.custom.reset(new ByNode(2));
 
+  // retrieve both properties with two locations that are identical except for the "custom" field
   std::cout << "prop1=" << fep.props().get<double>("prop1", loc1) << std::endl;
   std::cout << "prop2=" << fep.props().get<double>("prop2", loc2) << std::endl;
   std::cout << "shift()\n";
   fep.props().shift();
+  // retrieving these values again with identical locations (except custom field) results in the
+  // appropriately different values - they were correctly keyed separately and stored uniquely.
   std::cout << "prop1_old=" << fep.props().getOld<double>("prop1", loc1) << std::endl;
   std::cout << "prop2_old=" << fep.props().getOld<double>("prop2", loc2) << std::endl;
 }

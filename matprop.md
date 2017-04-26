@@ -89,7 +89,7 @@ Strengths:
   objects implicitly.
 
 * Fast enough - can retrieve a few billion (constant-valued) properties per minute on my
-  machine in serial (by id).  The more convenient by-name retrieval method is about ~10 times
+  machine in serial (by id).  The more convenient by-name retrieval method is about ~5 times
   slower.  Simulated with:
 
   props_per_mat = 10;

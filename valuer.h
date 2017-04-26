@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <list>
 #include <string>
@@ -39,7 +40,9 @@ public:
   virtual ~Value() {}
 
   // For contexts where values are used in map keys directly/indirectly or are compared, this
-  // function is used.
+  // function is used.  This is intended to enable use of custom Value classes for custom keying
+  // in Locations (i.e. Location.custom field) used together with custom comparators in
+  // ValueStores.
   virtual bool lessThan(const Value &) { return false; }
 };
 
@@ -182,7 +185,7 @@ public:
   // if name has never been added/registered.
   inline ValId id(const std::string & name)
   {
-    std::map<std::string, ValId>::iterator it = _ids.find(name);
+    std::unordered_map<std::string, ValId>::iterator it = _ids.find(name);
     if (it == _ids.end())
       throw std::runtime_error("value " + name + " doesn't exist (yet?)");
     return it->second;
@@ -222,7 +225,7 @@ public:
 
   // Computes and returns the current value for the given value id at the specified mesh location.
   template <typename T>
-  T get(ValId id, const Location & loc, std::vector<std::string> needs = {})
+  T get(ValId id, const Location & loc, const std::vector<std::string> & needs = {})
   {
     if (_have_mapper[id])
       return get<T>(_mapper[id](loc), loc, needs);
@@ -271,7 +274,7 @@ public:
   // Alias for get(id(name), loc)
   template <typename T>
   inline double
-  get(const std::string & name, const Location & loc, std::vector<std::string> needs = {})
+  get(const std::string & name, const Location & loc, const std::vector<std::string> & needs = {})
   {
     return get<T>(id(name), loc, needs);
   }
@@ -427,7 +430,7 @@ private:
   }
 
   // map<value_name, value_id>
-  std::map<std::string, ValId> _ids;
+  std::unordered_map<std::string, ValId> _ids;
   // map<value_id, value_name>
   std::vector<std::string> _names;
 
