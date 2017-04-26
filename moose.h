@@ -12,8 +12,19 @@ class FEProblem
 public:
   FEProblem(bool errcheck = false) : _props(errcheck) {}
   QpStore & props() { return _props; }
+
 private:
   QpStore _props;
+};
+
+template <typename T>
+class GuaranteeSet : public Valuer<T>
+{
+public:
+  GuaranteeSet(std::set<std::string> guarantees) : _guarantees(guarantees) {}
+  virtual bool guarantees(std::string val) { return _guarantees.count(val) > 0; }
+private:
+  std::set<std::string> _guarantees;
 };
 
 // Defines a value/property computed by calling a specified (lambda) function and then returning
@@ -25,9 +36,10 @@ private:
 // value/property being computed.  This allows accomodates single "material" classes that want to
 // define/calculate several properties that may depend on each other.
 template <typename T>
-class LambdaVarValuer : public Valuer<T>
+class LambdaVarValuer : public GuaranteeSet<T>
 {
 public:
+  LambdaVarValuer(std::set<std::string> guarantees = {}) : GuaranteeSet<T>(guarantees) {}
   virtual ~LambdaVarValuer() {}
   void init(T * var, std::function<void(const Location &)> func)
   {
@@ -53,9 +65,10 @@ private:
 };
 
 template <typename T>
-class LambdaValuer : public Valuer<T>
+class LambdaValuer : public GuaranteeSet<T>
 {
 public:
+  LambdaValuer(std::set<std::string> guarantees = {}) : GuaranteeSet<T>(guarantees) {}
   virtual ~LambdaValuer() {}
   void init(std::function<T(const Location &)> func) { _func = func; }
   virtual T get(const Location & loc) override { return _func(loc); }
@@ -110,15 +123,17 @@ public:
   Material(FEProblem & fep, std::set<BlockId> blocks = {}) : _props(fep.props()), _blocks(blocks) {}
 
   template <typename T>
-  T prop(const std::string & name, const Location & loc)
+  T prop(const std::string & name, const Location & loc, std::vector<std::string> needs = {})
   {
-    return _props.get<T>(name, loc);
+    return _props.get<T>(name, loc, needs);
   }
 
   template <typename T>
-  void addPropFunc(std::string name, std::function<T(const Location &)> func)
+  void addPropFunc(std::string name,
+                   std::function<T(const Location &)> func,
+                   std::set<std::string> guarantees = {})
   {
-    auto valuer = new LambdaValuer<T>();
+    auto valuer = new LambdaValuer<T>(guarantees);
     valuer->init(func);
 
     if (_blocks.size() == 0)
@@ -142,9 +157,12 @@ public:
     }
   }
   template <typename T>
-  void addPropFuncVar(std::string name, T * var, std::function<void(const Location &)> func)
+  void addPropFuncVar(std::string name,
+                      T * var,
+                      std::function<void(const Location &)> func,
+                      std::set<std::string> guarantees = {})
   {
-    auto valuer = new LambdaVarValuer<T>();
+    auto valuer = new LambdaVarValuer<T>(guarantees);
     valuer->init(var, func);
 
     if (_blocks.size() == 0)
@@ -175,10 +193,10 @@ private:
   std::set<BlockId> _blocks;
 };
 
-#define bind_prop_func(prop, func, T)                                                              \
-  addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); })
-#define bind_prop_func_var(prop, func, var)                                                        \
-  addPropFuncVar(prop, &var, [this](const Location & loc) { func(loc); })
+#define bind_prop_func(prop, func, T, ...)                                                         \
+  addPropFunc<T>(prop, [this](const Location & loc) { return func(loc); }, {__VA_ARGS__})
+#define bind_prop_func_var(prop, func, var, ...)                                                   \
+  addPropFuncVar(prop, &var, [this](const Location & loc) { func(loc); }, {__VA_ARGS__})
 
 // Generate a standardized derivative property name using a base name plus an (ordered) sequence of
 // independent variable names of each partial derivative.  1 varaible implies 1st order

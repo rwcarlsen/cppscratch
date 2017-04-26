@@ -78,7 +78,7 @@ public:
 
   void propABC(const Location & loc)
   {
-    _a = prop<double>("prop-from-another-material", loc);
+    _a = prop<double>("prop-from-another-material", loc, {"isotropic-guarantee"});
     _b = 2 * _a;
     _c = 2 * _b;
   }
@@ -87,6 +87,16 @@ private:
   double _a;
   double _b;
   double _c;
+};
+
+class DemoMaterial2 : public Material
+{
+public:
+  DemoMaterial2(FEProblem & fep, std::set<BlockId> blocks = {}) : Material(fep, blocks)
+  {
+    bind_prop_func("prop-from-another-material", prop1, double); //, "isotropic-guarantee");
+  }
+  double prop1(const Location & loc) { return 42; }
 };
 
 void
@@ -296,15 +306,37 @@ blockRestrictDemo()
   DemoMaterial dm2(fep, {6, 7, 8});
 }
 
+void
+guaranteesTest()
+{
+  // dm2 provides  the external property "prop-from-another-material", but without the guarantee
+  // "isotropic-guarantee" that is asked for on it.
+  FEProblem fep(true);
+  DemoMaterial dm1(fep);
+  DemoMaterial2 dm2(fep);
+
+  try
+  {
+    fep.props().get<double>("demo-prop-a", Location(1, 1));
+  }
+  catch (std::runtime_error err)
+  {
+    std::cout << err.what() << std::endl;
+    return;
+  }
+  std::cout << "guaranteesTest FAIL\n";
+}
+
 int
 main(int argc, char ** argv)
 {
-  // scalingStudy();
+  scalingStudy();
   basicPrintoutTest();
   customKeyTest();
   wrongTypeTest();
   cyclicalDepTest();
   blockRestrictDemo();
+  guaranteesTest();
 
   // FEProblem fep;
   // MyMat mat(fep, "mymat", {"prop1", "prop7"});

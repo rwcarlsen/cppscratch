@@ -66,6 +66,8 @@ public:
   // Returns the (nick)name for the C++ type of the stored value.  Used for error checking
   // for compatible types in the ValueStore.
   virtual std::string type_name() = 0;
+  // Returns true if the valuer provides the particular named guarantee.
+  virtual bool guarantees(std::string val) { return false; };
   // This function is a hook that is called whenenver a ValueStore this valuer is registered with
   // performs a "shift" operation (i.e. a simulation step or moving current values to old, etc.).
   virtual void shift() {}
@@ -81,9 +83,9 @@ class Valuer : public ValuerBase
 {
 public:
   virtual ~Valuer() {}
-  // Computes and return a value at the specified mesh location.  get should be idempotent - i.e.
+  // Computes and returns a value at the specified mesh location.  get should be idempotent - i.e.
   // consecutive calls to get (with no significant simulation state changes between them) should
-  // result in the same answer.
+  // result in the same returned value.
   virtual T get(const Location &) = 0;
   // Optionally return an initial condition "old" value.  This is used if an old (i.e. previous
   // simulation time step) version of this value is requested, but there was no prior current
@@ -220,10 +222,10 @@ public:
 
   // Computes and returns the current value for the given value id at the specified mesh location.
   template <typename T>
-  T get(ValId id, const Location & loc)
+  T get(ValId id, const Location & loc, std::vector<std::string> needs = {})
   {
     if (_have_mapper[id])
-      return get<T>(_mapper[id](loc), loc);
+      return get<T>(_mapper[id](loc), loc, needs);
 
     if (_errcheck)
     {
@@ -237,6 +239,12 @@ public:
       }
       _cycle_stack.back()[id] = true;
       checkType<T>(id);
+
+      for (auto & need : needs)
+      {
+        if (!_valuers[id]->guarantees(need))
+          throw std::runtime_error("missing guarantee '" + need + "'");
+      }
     }
 
     // Due to older-val storing, we may already have computed and cached the requested value.  If
@@ -262,9 +270,10 @@ public:
 
   // Alias for get(id(name), loc)
   template <typename T>
-  inline double get(const std::string & name, const Location & loc)
+  inline double
+  get(const std::string & name, const Location & loc, std::vector<std::string> needs = {})
   {
-    return get<T>(id(name), loc);
+    return get<T>(id(name), loc, needs);
   }
 
   // Computes and returns the previous value for the given value id at the specified mesh
