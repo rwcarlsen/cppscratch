@@ -261,13 +261,13 @@ blockRestrictDemo()
   //     43
   //     43
   BlockId block_id = 4;
-  std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(3, 1, 1, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(3, 1, 1, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(3, 1, 1, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("v", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("v", Location(3, 1, 1, block_id)) << std::endl;
 
   // or you can use a convenience umbrella material like this that would normally be
   // created/initialized automatigically from the input file
@@ -279,13 +279,13 @@ blockRestrictDemo()
   //     43
   //     43
   block_id = 4;
-  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, block_id)) << std::endl;
   block_id++;
-  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, 0, block_id)) << std::endl;
+  std::cout << fep.props().get<double>("vv", Location(3, 1, 1, block_id)) << std::endl;
 
   // or you can use a convenience blocks param arg to the material constructor.  This is more
   // analogous to current moose practice where you manually block-restrict each material object,

@@ -32,6 +32,9 @@ Weaknesses:
 
 Strengths:
 
+* If stateful/old(er) values are being stored for a property, this reuses those pre-computed
+  values (if they have already been cached).
+
 * Preserves not storing/cacheing/reusing material properties between computations unless needed
   for stateful properties.
 

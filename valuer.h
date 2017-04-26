@@ -187,11 +187,8 @@ public:
   }
 
   // Explicitly marks the named value (which must have already been added) for
-  // tracking of its stateful old values.
+  // tracking of its stateful old/older values.
   inline void wantOld(const std::string & name) { _want_old[id(name)] = true; }
-  // Explicitly marks the named value (which must have already been added) for
-  // tracking of its stateful older values.
-  inline void wantOlder(const std::string & name) { _want_older[id(name)] = true; }
 
   // addMapper allows the given value name to actually compute+return the value from another
   // valuer determined by calling the passed mapper function.  It returns a unique, persistent id
@@ -200,7 +197,9 @@ public:
   // function would be called (passing in the location) and the returned value id would be used to
   // compute+fetch the actual value.  It is a mechanism to allow one value/id to be a conditional
   // alias mapping to arbitrary other value id's depending on location and any other desired state
-  // closed over by the mapper function.
+  // closed over by the mapper function.  This cannot be implemented outside of the ValuleStore
+  // because we need to support generation/creation of mappings when the c++ types for the
+  // involved valuers are "unknown".
   ValId addMapper(const std::string & name, std::function<ValId(const Location &)> mapper)
   {
     return add(name, nullptr, mapper, false);
@@ -240,11 +239,21 @@ public:
       checkType<T>(id);
     }
 
+    // Due to older-val storing, we may already have computed and cached the requested value.  If
+    // so, return it directly instead of re-computing it.  This is okay because we clear
+    // _curr_vals after every shift.
+    if (_want_old[id] && _curr_vals[id].count(loc) > 0)
+    {
+      if (_errcheck)
+        _cycle_stack.back().erase(id);
+      return static_cast<TypedValue<T> *>(_curr_vals[id][loc])->val;
+    }
+
     auto val = static_cast<Valuer<T> *>(_valuers[id])->get(loc);
     _external_curr[id] = true;
 
     // mark this property as computed if we need its old value and stage/store value
-    if (_want_old[id] || _want_older[id])
+    if (_want_old[id])
       stageOld(id, loc, val);
     if (_errcheck)
       _cycle_stack.back().erase(id);
@@ -264,7 +273,7 @@ public:
   template <typename T>
   T getOld(ValId id, const Location & loc)
   {
-    return getStored<T>(_old_vals, _want_old, id, loc);
+    return getStored<T>(_old_vals, id, loc);
   }
 
   // Alias for getOld(id(name), loc)
@@ -281,7 +290,7 @@ public:
   template <typename T>
   T getOlder(ValId id, const Location & loc)
   {
-    return getStored<T>(_older_vals, _want_older, id, loc, true);
+    return getStored<T>(_older_vals, id, loc, true);
   }
 
   // Alias to getOlder(id(name), loc)
@@ -320,6 +329,7 @@ public:
     _old_vals.swap(_curr_vals);
     for (auto valuer : _valuers)
       valuer->shift();
+    _curr_vals.clear();
   }
 
 private:
@@ -337,7 +347,6 @@ private:
     _names.push_back(name);
     _valuers.push_back(q);
     _want_old.push_back(false);
-    _want_older.push_back(false);
     _own_valuer.push_back(take_ownership);
     _mapper.push_back(mapper);
     _have_mapper.push_back(q == nullptr);
@@ -347,13 +356,12 @@ private:
 
   template <typename T>
   T getStored(std::map<ValId, std::map<Location, Value *, Cmp>> & vals,
-              std::vector<bool> & want,
               ValId id,
               const Location & loc,
               bool older = false)
   {
     if (_have_mapper[id])
-      return getStored<T>(vals, want, _mapper[id](loc), loc);
+      return getStored<T>(vals, _mapper[id](loc), loc);
 
     if (_errcheck)
     { // make sure there are no returns between this code and the next "if(_errcheck)"
@@ -361,8 +369,7 @@ private:
       checkType<T>(id);
     }
 
-    if (!want[id])
-      want[id] = true;
+    _want_old[id] = true;
 
     // force computation of current value in preparation for next old value if there was no other
     // explicit calls to value for this property/location combo.
@@ -419,10 +426,9 @@ private:
   std::vector<ValuerBase *> _valuers;
   // true if we own the memory of the valuer
   std::vector<bool> _own_valuer;
-  // map<value_id, want_old>. True if an old version of the value has (ever) been requested.
+  // map<value_id, want_old>. True if an old or older version of the value has (ever) been
+  // requested.
   std::vector<bool> _want_old;
-  // map<value_id, want_older>. True if an older version of the value has (ever) been requested.
-  std::vector<bool> _want_older;
   // map<value_id, valuer>
   std::vector<bool> _have_mapper;
   // map<value_id, mapper>
