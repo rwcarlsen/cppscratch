@@ -142,6 +142,7 @@ public:
 // element id, face id, and quadrature point index key.
 class QpKey
 {
+
 public:
   bool operator()(const Location & lhs, const Location & rhs) const
   {
@@ -312,11 +313,11 @@ public:
     return getOlder<T>(id(name), loc);
   }
 
-  // Projects/copies computed old values at the source locations to live under destination
-  // locations (mapped one to one in the ordered vectors).  When doing e.g. mesh adaptivity, call
-  // this to project values at old locations (srcs) to new locations (dsts) where they were never
-  // explicitly computed before.  This needs to be called *after* the call to shift and *before*
-  // calls to getOld.
+  // Projects/copies computed old values at the given source locations to live under the given
+  // destination locations (mapped one to one in the ordered vectors).  When doing e.g. mesh
+  // adaptivity, call this to project values at old locations (srcs) to new locations (dsts) where
+  // they were never explicitly computed before.  This needs to be called *after* the call to
+  // shift and *before* calls to getOld.
   void project(std::vector<const Location *> srcs, std::vector<const Location *> dsts)
   {
     for (ValId id = 0; id < _valuers.size(); id++)
@@ -333,8 +334,9 @@ public:
     }
   }
 
-  // Moves stored "current" values to "older" values, discarding any previous "older" values.
-  // Notifies all added/registered Valuers of the shift by calling their shift functions.
+  // Moves stored "current" values to "old" and "old" to "older" values, discarding any previous
+  // "older" values.  Notifies all added/registered Valuers of the shift by calling their shift
+  // functions.
   void shift()
   {
     _older_vals.swap(_old_vals);
@@ -346,9 +348,8 @@ public:
 
 private:
   // handles all addition of new values to this store.  _ids, _valuers, etc. structures themselves
-  // (not
-  // necsesarily the items they hold) should generally NOT be modified by anything other than this
-  // function.
+  // (not necsesarily the items they hold) should generally NOT be modified by anything other than
+  // this function.
   ValId add(const std::string & name,
             ValuerBase * q,
             std::function<ValId(const Location &)> mapper,

@@ -347,22 +347,5 @@ main(int argc, char ** argv)
   blockRestrictDemo();
   guaranteesTest();
 
-  // FEProblem fep;
-  // MyMat mat(fep, "mymat", {"prop1", "prop7"});
-  // MyDepOldMat matdepold(fep, "mymatdepold", "mymat-prop7");
-
-  // std::cout << fep.props().get<double>("mymat-prop1", Location(3, 1)) << std::endl;
-  // std::cout << fep.props().get<double>("mymat-prop1", Location(3, 2)) << std::endl;
-  // std::cout << fep.props().get<double>("mymat-prop7", Location(3, 2)) << std::endl;
-
-  // std::cout << "printing older props:\n";
-  // Location loc(fep, 1);
-  // for (int i = 0; i < 8; i++)
-  //{
-  //  std::cout << "\nprop7=" << fep.props().get<double>("mymat-prop7", loc) << std::endl;
-  //  std::cout << "    olderprop=" << fep.props().get<double>("mymatdepold", loc) << std::endl;
-  //}
-  //
-
   return 0;
 }

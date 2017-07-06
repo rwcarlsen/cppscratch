@@ -33,8 +33,8 @@ private:
 // the (lambda) function is not called again and just the value at the variable address is
 // returned.  shift() calls to the holding QpStore reset the cached value.  This is useful for
 // avoiding duplicate computations if the lambda function call results in more than one
-// value/property being computed.  This allows accomodates single "material" classes that want to
-// define/calculate several properties that may depend on each other.
+// value/property being computed.  This allows/accomodates single "material" classes that want to
+// calculate several properties at once that may depend on each other.
 template <typename T>
 class LambdaVarValuer : public GuaranteeSet<T>
 {
@@ -102,14 +102,15 @@ private:
   T _cache;
 };
 
+// Demonstrates how we might replicate current material property access patterns.
 class MaterialPropertyInterface
 {
 public:
   MaterialPropertyInterface(FEProblem & fep) : _fep(fep) {}
-  // TODO: auto-generate Location/loc from FEProblem.assembly()
   template <typename T>
   T prop(const std::string & name)
   {
+    // TODO: auto-generate/discover location from FEProblem.assembly() or similar
     return _fep.props().get<T>(name, Location(0, 0, 0));
   }
 
