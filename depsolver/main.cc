@@ -194,21 +194,9 @@ computeLoops(Graph & g)
   return loops;
 }
 
-int
-main(int narg, char ** argv)
+void
+printLoops(std::vector<std::vector<std::vector<Node *>>> loops)
 {
-  Graph graph;
-  auto a = graph.create(true, "a");
-  auto b = graph.create(false, "b");
-  auto c = graph.create(true, "c");
-  auto d = graph.create(true, "d");
-  a->needs(b);
-  a->needs(c);
-  a->needs(d);
-  b->needs(c);
-
-  auto loops = computeLoops(graph);
-
   for (size_t i = 0; i < loops.size(); i++)
   {
     auto & loop = loops[i];
@@ -222,10 +210,60 @@ main(int narg, char ** argv)
       std::cout << "\n";
     }
   }
+}
 
-  std::cout << "a.loop = " << a->loop() << "\n";
-  std::cout << "b.loop = " << b->loop() << "\n";
-  std::cout << "c.loop = " << c->loop() << "\n";
+void
+case1()
+{
+  std::cout << "::::: CASE 1 :::::\n";
+  Graph graph;
+  auto a = graph.create(true, "a");
+  auto b = graph.create(false, "b");
+  auto c = graph.create(true, "c");
+  auto d = graph.create(true, "d");
+  a->needs(b);
+  a->needs(c);
+  a->needs(d);
+  b->needs(c);
+
+  auto loops = computeLoops(graph);
+  printLoops(loops);
+}
+
+void
+case2()
+{
+  std::cout << "::::: CASE 2 :::::\n";
+  Graph graph;
+  auto a = graph.create(true, "a");
+  auto b = graph.create(false, "b");
+  auto c = graph.create(true, "c");
+  auto d = graph.create(true, "d");
+  auto e = graph.create(false, "e");
+  auto f = graph.create(false, "f");
+  auto g = graph.create(false, "g");
+  auto h = graph.create(true, "h");
+  auto k = graph.create(true, "k");
+  k->needs(f);
+  k->needs(g);
+  f->needs(b);
+  b->needs(a);
+  g->needs(a);
+  h->needs(e);
+  h->needs(d);
+  e->needs(d);
+  d->needs(c);
+  d->needs(b);
+
+  auto loops = computeLoops(graph);
+  printLoops(loops);
+}
+
+int
+main(int narg, char ** argv)
+{
+  case1();
+  case2();
 
   return 0;
 }
