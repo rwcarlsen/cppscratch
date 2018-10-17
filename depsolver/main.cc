@@ -83,6 +83,8 @@ private:
   std::vector<std::unique_ptr<Node>> _node_storage;
 };
 
+// this effectively implements a topological sort for the nodes in the graph g. returning a list
+// that can be executed that contains groups of nodes that can be run simultaneously.
 void
 execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
 {
@@ -96,6 +98,37 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
     }
   }
 }
+
+// Note that in a more complete implementation floodDown and floodUp for what
+// we need we will have to also chop/block the graph walking if a node needs a different
+// loop type than the type of loop being generated for currently (e.g. nodal vs elemental).
+
+// Also, non-elemental nodes will only need to be recomputed every loop if they don't store/cache
+// the values they compute (aut kernels store their values like this).  So in actuality, Ovjects
+// will have several properties:
+//
+//     * stored vs not-stored: their computed value at mesh points is cached and does not need to be
+//       recomputed across consecutive loops
+//     * loop type: nodal, elemental, etc.
+//     * reduction operation vs not: e.g. postprocessors perform a reducing operation.
+//
+// All reducing nodes store their values, but some non-reducing do as well.
+// A more complete implementation will require:
+//
+// * When flooding down or up, we stop and chop the graph below reducing nodes or when a node's
+//   loop type differs from the loop type currently being worked on.
+//
+// * When generating the loops, we need to proceed from nodes as high in the global
+//   graph as possible the node highest in this graph will "choose" which loop type we should
+//   generate next.  This will prevent nodes later in the graph from being erroneously
+//   assigned a higher loop number than they need to because loops of a certain type haven't been
+//   generated yet.
+//
+// * When flooding up, we actually need to chop the graph below all stored value nodes (not just
+//   below reducing nodes) in addition to nodes that have a different loop type.
+//
+// * non-stored nodes cannot depend on other non-stored objects that have a different loop type -
+//   it doesn't make sense. We should have an error check to prevent this.
 
 // walk n's dependencies recursively traversing over elemental nodes and stopping at non-elemental
 // nodes adding all visited elemental nodes.  The blocking non-elemental nodes are not added to
@@ -125,15 +158,25 @@ floodDown(Node * n, Subgraph & g)
     floodDown(dep, g);
 }
 
+// returns true if a node n can be executed in the given candidate loop number
 bool
 canrun(Node * n, int candidate_loop)
 {
+  // if any dependency of this node is a non-elemental/aggregating node that has not yet been
+  // assigned to run in a loop prior to the candidate loop, then the node cannot run in the
+  // candidate loop. In a more complete implementation, this will actually need to check if n
+  // has any non-executed stored dependencies rather than non-executed reduction/aggregation
+  // dependencies.
   for (auto dep : n->deps())
     if (!dep->is_elemental() && dep->loop() > candidate_loop)
       return false;
   return true;
 }
 
+// this walks up the graph recursively from n cancelling nodes for which all dependers have been
+// cancelled.  Note that this algorithm is imperfect/incomplete - it could miss nodes that ought
+// to be cancelled because cancel-propogation hasn't yet worked its way up the tree far enough to
+// cancell all a node's dependers.
 void
 cancelUp(Node * n, Subgraph & cancelled)
 {
@@ -172,6 +215,8 @@ computeLoops(Graph & g)
       if (!canrun(n, loop))
         floodDown(n, cancelled);
 
+    // Note that this is not necessary for correctness - it only serves as an optimization to
+    // remove superfluous node executions.
     for (auto n : cancelled.leaves())
       cancelUp(n, cancelled);
 
