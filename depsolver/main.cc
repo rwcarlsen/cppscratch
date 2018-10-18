@@ -5,15 +5,30 @@
 #include <map>
 #include <list>
 
+enum class LoopType
+{
+  Nodal,
+  Elemental,
+};
+
 class Node
 {
 public:
-  Node(bool elemental, const std::string & name = "") : _name(name), _elemental(elemental) {}
+  Node(const std::string & name, bool stored, bool reducing, LoopType l = LoopType::Elemental)
+    : _name(name), _stored(stored), _reducing(reducing), _looptype(l)
+  {
+  }
   void setLoop(int loop) { _loop = loop; }
   int loop() const { return _loop; }
   std::set<Node *> deps() const { return _deps; }
   std::set<Node *> dependers() const { return _dependers; }
-  bool is_elemental() const { return _elemental; };
+
+  // TODO: this is obsolete and needs to go
+  bool is_elemental() const
+  {
+    return !_stored && !_reducing && (_looptype == LoopType::Elemental);
+  };
+
   std::string str() { return _name; }
 
   void needs() {}
@@ -28,7 +43,9 @@ public:
 
 private:
   std::string _name;
-  bool _elemental = true;
+  bool _stored;
+  bool _reducing;
+  LoopType _looptype;
   int _loop = std::numeric_limits<int>::max();
   std::set<Node *> _deps;
   std::set<Node *> _dependers;
@@ -266,10 +283,10 @@ case1()
 {
   std::cout << "::::: CASE 1 :::::\n";
   Graph graph;
-  auto a = graph.create(true, "a");
-  auto b = graph.create(false, "b");
-  auto c = graph.create(true, "c");
-  auto d = graph.create(true, "d");
+  auto a = graph.create("a", false, false);
+  auto b = graph.create("b", true, true);
+  auto c = graph.create("c", false, false);
+  auto d = graph.create("d", false, false);
   a->needs(b, c, d);
   b->needs(c);
 
@@ -282,15 +299,15 @@ case2()
 {
   std::cout << "::::: CASE 2 :::::\n";
   Graph graph;
-  auto a = graph.create(true, "a");
-  auto b = graph.create(false, "b");
-  auto c = graph.create(true, "c");
-  auto d = graph.create(true, "d");
-  auto e = graph.create(false, "e");
-  auto f = graph.create(false, "f");
-  auto g = graph.create(false, "g");
-  auto h = graph.create(true, "h");
-  auto k = graph.create(true, "k");
+  auto a = graph.create("a", false, false);
+  auto b = graph.create("b", true, true);
+  auto c = graph.create("c", false, false);
+  auto d = graph.create("d", false, false);
+  auto e = graph.create("e", true, true);
+  auto f = graph.create("f", true, true);
+  auto g = graph.create("g", true, true);
+  auto h = graph.create("h", false, false);
+  auto k = graph.create("k", false, false);
   k->needs(f, g);
   f->needs(b);
   b->needs(a);
