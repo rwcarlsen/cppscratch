@@ -15,11 +15,15 @@ public:
   std::set<Node *> dependers() const { return _dependers; }
   bool is_elemental() const { return _elemental; };
   std::string str() { return _name; }
-  Node * needs(Node * n)
+
+  void needs() {}
+
+  template <typename... Args>
+  void needs(Node * n, Args... args)
   {
     _deps.insert(n);
     n->_dependers.insert(this);
-    return n;
+    needs(args...);
   }
 
 private:
@@ -266,9 +270,7 @@ case1()
   auto b = graph.create(false, "b");
   auto c = graph.create(true, "c");
   auto d = graph.create(true, "d");
-  a->needs(b);
-  a->needs(c);
-  a->needs(d);
+  a->needs(b, c, d);
   b->needs(c);
 
   auto loops = computeLoops(graph);
@@ -289,16 +291,13 @@ case2()
   auto g = graph.create(false, "g");
   auto h = graph.create(true, "h");
   auto k = graph.create(true, "k");
-  k->needs(f);
-  k->needs(g);
+  k->needs(f, g);
   f->needs(b);
   b->needs(a);
   g->needs(a);
-  h->needs(e);
-  h->needs(d);
+  h->needs(e, d);
   e->needs(d);
-  d->needs(c);
-  d->needs(b);
+  d->needs(c, b);
 
   auto loops = computeLoops(graph);
   printLoops(loops);
