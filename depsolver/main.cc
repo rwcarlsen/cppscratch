@@ -11,6 +11,37 @@ enum class LoopType
   Elemental,
 };
 
+// Note that in a more complete implementation floodDown and floodUp for what
+// we need we will have to also chop/block the graph walking if a node needs a different
+// loop type than the type of loop being generated for currently (e.g. nodal vs elemental).
+
+// Also, non-elemental nodes will only need to be recomputed every loop if they don't store/cache
+// the values they compute (aut kernels store their values like this).  So in actuality, Ovjects
+// will have several properties:
+//
+//     * stored vs not-stored: their computed value at mesh points is cached and does not need to be
+//       recomputed across consecutive loops
+//     * loop type: nodal, elemental, etc.
+//     * reduction operation vs not: e.g. postprocessors perform a reducing operation.
+//
+// All reducing nodes store their values, but some non-reducing do as well.
+// A more complete implementation will require:
+//
+// * When flooding down or up, we stop and chop the graph below reducing nodes or when a node's
+//   loop type differs from the loop type currently being worked on.
+//
+// * When generating the loops, we need to proceed from nodes as high in the global
+//   graph as possible the node highest in this graph will "choose" which loop type we should
+//   generate next.  This will prevent nodes later in the graph from being erroneously
+//   assigned a higher loop number than they need to because loops of a certain type haven't been
+//   generated yet.
+//
+// * When flooding up, we actually need to chop the graph below all stored value nodes (not just
+//   below reducing nodes) in addition to nodes that have a different loop type.
+//
+// * non-stored nodes cannot depend on other non-stored objects that have a different loop type -
+//   it doesn't make sense. We should have an error check to prevent this.
+
 class Node
 {
 public:
@@ -149,37 +180,6 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
     }
   }
 }
-
-// Note that in a more complete implementation floodDown and floodUp for what
-// we need we will have to also chop/block the graph walking if a node needs a different
-// loop type than the type of loop being generated for currently (e.g. nodal vs elemental).
-
-// Also, non-elemental nodes will only need to be recomputed every loop if they don't store/cache
-// the values they compute (aut kernels store their values like this).  So in actuality, Ovjects
-// will have several properties:
-//
-//     * stored vs not-stored: their computed value at mesh points is cached and does not need to be
-//       recomputed across consecutive loops
-//     * loop type: nodal, elemental, etc.
-//     * reduction operation vs not: e.g. postprocessors perform a reducing operation.
-//
-// All reducing nodes store their values, but some non-reducing do as well.
-// A more complete implementation will require:
-//
-// * When flooding down or up, we stop and chop the graph below reducing nodes or when a node's
-//   loop type differs from the loop type currently being worked on.
-//
-// * When generating the loops, we need to proceed from nodes as high in the global
-//   graph as possible the node highest in this graph will "choose" which loop type we should
-//   generate next.  This will prevent nodes later in the graph from being erroneously
-//   assigned a higher loop number than they need to because loops of a certain type haven't been
-//   generated yet.
-//
-// * When flooding up, we actually need to chop the graph below all stored value nodes (not just
-//   below reducing nodes) in addition to nodes that have a different loop type.
-//
-// * non-stored nodes cannot depend on other non-stored objects that have a different loop type -
-//   it doesn't make sense. We should have an error check to prevent this.
 
 // walk n's dependencies recursively traversing over elemental nodes and stopping at non-elemental
 // nodes adding all visited elemental nodes.  The blocking non-elemental nodes are not added to
