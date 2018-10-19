@@ -14,20 +14,28 @@ enum class LoopType
 class Node
 {
 public:
-  Node(const std::string & name, bool stored, bool reducing, LoopType l = LoopType::Elemental)
-    : _name(name), _stored(stored), _reducing(reducing), _looptype(l)
+  Node(const std::string & name, bool cached, bool reducing, LoopType l = LoopType::Elemental)
+    : _name(name), _cached(cached), _reducing(reducing), _looptype(l)
   {
   }
   void setLoop(int loop) { _loop = loop; }
   int loop() const { return _loop; }
   std::set<Node *> deps() const { return _deps; }
   std::set<Node *> dependers() const { return _dependers; }
-
-  // TODO: this is obsolete and needs to go
-  bool is_elemental() const
+  int depth()
   {
-    return !_stored && !_reducing && (_looptype == LoopType::Elemental);
-  };
+    if (_deps.empty())
+      return 0;
+
+    int max = 0;
+    for (auto & dep : _deps)
+      max = std::max(max, dep->depth());
+    return max + 1;
+  }
+
+  bool isReducing() { return _reducing; }
+  bool isCached() { return _cached; }
+  LoopType loopType() { return _looptype; }
 
   std::string str() { return _name; }
 
@@ -43,7 +51,7 @@ public:
 
 private:
   std::string _name;
-  bool _stored;
+  bool _cached;
   bool _reducing;
   LoopType _looptype;
   int _loop = std::numeric_limits<int>::max();
@@ -89,6 +97,23 @@ private:
   std::set<Node *> _nodes;
 };
 
+Node *
+mostShallow(std::set<Node *> nodes)
+{
+  if (nodes.empty())
+    return nullptr;
+
+  Node * shallow = nullptr;
+  int min = std::numeric_limits<int>::max();
+  for (auto & n : nodes)
+  {
+    if (n->depth() < min)
+      shallow = n;
+    min = std::min(min, n->depth());
+  }
+  return shallow;
+}
+
 class Graph : public Subgraph
 {
 public:
@@ -109,11 +134,16 @@ private:
 void
 execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
 {
+  std::set<Node *> executed;
   while (!g.nodes().empty())
   {
     order.push_back({});
     for (auto n : g.roots())
     {
+      if (executed.count(n) > 0 && n->isCached())
+        continue;
+
+      executed.insert(n);
       order.back().push_back(n);
       g.remove(n);
     }
@@ -155,28 +185,31 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
 // nodes adding all visited elemental nodes.  The blocking non-elemental nodes are not added to
 // the set.
 void
-floodUp(Node * n, Subgraph & g)
+floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 {
-  if (!n->is_elemental())
+  if ((n->isCached() && n->loop() < curr_loop) || n->loopType() != t)
     return;
 
   g.add(n);
   for (auto dep : n->deps())
-    floodUp(dep, g);
+    floodUp(dep, g, t, curr_loop);
 }
 
 // walk nodes that depend on n recursively traversing over elemental nodes and stopping at
 // non-elemental nodes adding all visited nodes.  The blocking non-elemental nodes are added to the
 // set although they are not traversed over.
 void
-floodDown(Node * n, Subgraph & g)
+floodDown(Node * n, Subgraph & g, LoopType t)
 {
+  if (n->loopType() != t)
+    return;
+
   g.add(n);
-  if (!n->is_elemental())
+  if (n->isReducing())
     return;
 
   for (auto dep : n->dependers())
-    floodDown(dep, g);
+    floodDown(dep, g, t);
 }
 
 // returns true if a node n can be executed in the given candidate loop number
@@ -189,7 +222,7 @@ canrun(Node * n, int candidate_loop)
   // has any non-executed stored dependencies rather than non-executed reduction/aggregation
   // dependencies.
   for (auto dep : n->deps())
-    if (!dep->is_elemental() && dep->loop() > candidate_loop)
+    if (dep->isReducing() && dep->loop() > candidate_loop)
       return false;
   return true;
 }
@@ -199,20 +232,20 @@ canrun(Node * n, int candidate_loop)
 // to be cancelled because cancel-propogation hasn't yet worked its way up the tree far enough to
 // cancell all a node's dependers.
 void
-cancelUp(Node * n, Subgraph & cancelled)
+cancelUp(Node * n, Subgraph & candidates, Subgraph & cancelled)
 {
   // abort recursion if any depender is not cancelled
   if (!cancelled.contains(n))
     for (auto dep : n->dependers())
-      if (!cancelled.contains(dep))
+      if (!cancelled.contains(dep) || !candidates.contains(dep))
         return;
 
   // all of n's dependers have been cancelled. Cancel n and check if any of its dependencies need
   // to be cancelled.
   cancelled.add(n);
   for (auto dep : n->deps())
-    if (dep->is_elemental())
-      cancelUp(dep, cancelled);
+    if (!dep->isCached() || cancelled.contains(dep))
+      cancelUp(dep, candidates, cancelled);
 }
 
 std::vector<std::vector<std::vector<Node *>>>
@@ -224,22 +257,24 @@ computeLoops(Graph & g)
   int loop = 0;
   while (!queue.empty())
   {
+    LoopType t = mostShallow(queue)->loopType();
+
     Subgraph g;
     for (auto n : queue)
-      floodDown(n, g);
+      floodDown(n, g, t);
 
     for (auto n : g.leaves())
-      floodUp(n, g);
+      floodUp(n, g, t, loop);
 
     Subgraph cancelled;
     for (auto n : g.nodes())
       if (!canrun(n, loop))
-        floodDown(n, cancelled);
+        floodDown(n, cancelled, t);
 
     // Note that this is not necessary for correctness - it only serves as an optimization to
     // remove superfluous node executions.
     for (auto n : cancelled.leaves())
-      cancelUp(n, cancelled);
+      cancelUp(n, g, cancelled);
 
     for (auto n : cancelled.nodes())
       g.remove(n);
@@ -320,11 +355,38 @@ case2()
   printLoops(loops);
 }
 
+void
+case3()
+{
+  std::cout << "::::: CASE 3 :::::\n";
+  Graph graph;
+  auto a = graph.create("a", false, false);
+  auto b = graph.create("b", true, true);
+  auto c = graph.create("c", false, false);
+  auto d = graph.create("d", true, false);
+  auto e = graph.create("e", true, true);
+  auto f = graph.create("f", true, true);
+  auto g = graph.create("g", true, true);
+  auto h = graph.create("h", false, false);
+  auto k = graph.create("k", false, false);
+  k->needs(f, g);
+  f->needs(b);
+  b->needs(a);
+  g->needs(a);
+  h->needs(e, d);
+  e->needs(d);
+  d->needs(c, b);
+
+  auto loops = computeLoops(graph);
+  printLoops(loops);
+}
+
 int
 main(int narg, char ** argv)
 {
   case1();
   case2();
+  case3();
 
   return 0;
 }
