@@ -43,9 +43,20 @@ public:
     return *this;
   }
 
-  template <int Index>
-  void addAttribs() { }
+  template <typename... Args>
+  size_t query_id(Args &&... args)
+  {
+    setKeysInner<0, KeyType<Attribs>...>(args...);
+    if (_cache.count(_key_tup) > 0)
+      return _cache[_key_tup];
 
+    setAttribsInner<0, KeyType<Attribs>...>(args...);
+    auto id = _w.prepare(_attribs);
+    _cache[_key_tup] = id;
+    return id;
+  }
+
+private:
   template <int Index, typename A, typename ... As>
   void
   addAttribs()
@@ -54,39 +65,32 @@ public:
     _attribs.emplace_back(std::get<Index>(_attrib_tup));
     addAttribs<Index+1, As...>();
   }
-
-  template <typename... Args>
-  size_t query_id(Args... args)
-  {
-    auto tup = std::make_tuple(args...);
-    if (_cache.count(tup) > 0)
-      return _cache[tup];
-
-    setAttribs(args...);
-    auto id = _w.prepare(_attribs);
-    _cache[tup] = id;
-    return id;
-  }
-
-private:
-  void
-  setAttribs(KeyType<Attribs>... args)
-  {
-    setAttribsInner<0, KeyType<Attribs>...>(args...);
-  }
+  template <int Index>
+  void addAttribs() { }
 
   template <int Index, typename K, typename ... Args>
   void
-  setAttribsInner(K k, Args... args)
+  setKeysInner(K & k, Args &&... args)
+  {
+    std::get<Index>(_key_tup) = k;
+    setKeysInner<Index+1, Args...>(args...);
+  }
+  template <int Index>
+  void setKeysInner() { }
+
+
+  template <int Index, typename K, typename ... Args>
+  void
+  setAttribsInner(K k, Args &&... args)
   {
     std::get<Index>(_attrib_tup)->setFrom(k);
     setAttribsInner<Index+1, Args...>(args...);
   }
-
   template <int Index>
   void setAttribsInner() { }
 
   AttribTuple _attrib_tup;
+  KeyTuple _key_tup;
   std::map<KeyTuple, size_t> _cache;
 
   std::vector<std::unique_ptr<Attribute>> _attribs;
