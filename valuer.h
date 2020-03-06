@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <map>
 #include <unordered_map>
 #include <vector>
@@ -274,8 +275,7 @@ public:
 
   // Alias for get(id(name), loc)
   template <typename T>
-  inline double
-  get(const std::string & name, const Location & loc, const std::vector<std::string> & needs = {})
+  T get(const std::string & name, const Location & loc, const std::vector<std::string> & needs = {})
   {
     return get<T>(id(name), loc, needs);
   }

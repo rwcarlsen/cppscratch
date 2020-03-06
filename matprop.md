@@ -15,6 +15,18 @@ Progress implementing new features:
 - [x] handle initial conditions
 - [ ] rendezvous/communicate stateful props correctly after mesh refinement/repartitioning
 
+Thoughts on further improvements:
+
+The current handling of mapping one property to multiple others via a single
+mapper is somewhat restrictive and not natural for implementing things like
+boundary or block restriction the way moose currently does.  Maybe it would be
+better to have a boolean function that takes a location argument associated
+with each property - and there can be multiple properties with the same
+name.  If a property's bool func returns true, use that property, otherwise
+continue searching through same-named properties until one returns true.  You
+could even have a debug mode check that throws errors if more than one
+property's func returns true for a particular location.
+
 Weaknesses:
 
 * Property value retrieval becomes a function call instead of a member access - a bit more
