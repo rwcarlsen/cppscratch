@@ -5,9 +5,63 @@
 #include <map>
 #include <list>
 
+// Notes/thoughts:
+//
+// FV flux kernels depend on pseudo elemental (elem and neighbor) values.  How
+// does this fit in to this paradigm?
+// DG kernels are evaluated inside the element loop currently.  How does this
+// fit in to this paradigm?
+// Maybe I'm over-thinking this.  Things just are assigned the loop that they
+// are evaluated in in the (moose) code.
+//
+// Aux variables depend on Aux kernels - this is sort-of backwards from When
+// objects depend on only regular (nonlinear) variables, they are actually
+// depending only on "cached" prev-timestep values of them - so there is no
+// actuall "current" dependency.  These objects are "roots" in the dependency
+// tree.  Objects that have nothing else depending on them (i.e. generally
+// kernels and outputs) are the leaves of the dependency tree.
+//
+// Objects are not allowed to depend on objects with a different loop type
+// unless the depended on object is cached and has been computed in a
+// prior/earlier loop.
+//
+// How do we recognize "ether" dependencies from regular dependencies - e.g.
+// we need to track if a dependency is only on a stateful/old[er] material
+// property, or depending on a solution variable.
+//
+// If a material property is only ever depended on as an old[er] value, then
+// we still need to evaluate that property even though it has effectively zero
+// dependencies.  Maybe we need to insert a "fake" dependency on this material
+// property that just enforces it is calculated every step so it is available
+// as old[er] when needed.
+
+// Example scenario to think through:
+//
+//      KernelA -> MaterialA -> AuxVar -> AuxKernel -> VarA
+//                     |                     |
+//                     +--> MaterialB -------+-----> VarB
+//
+// If kernelA and AuxVar are both elemental, then everything can be in the
+// same loop.  This is possible because AuxVar+AuxKernel combos are not
+// reducing/aggregation values even though they are cached.  If KernelA and
+// AuxVar are different loop types, then the must be in separate loops - this
+// is allowed/works because AuxVar is cached.
+//
+// Notable is that material objects sort of "morph" into whatever loop type
+// their dependers are.    In a face/fv loop, regular "elemental" material
+// property objects work fine - we just initialize two copies of them (elem
+// and neighbor) when we run them in the fv/face loop.  When running them in
+// elemental loops, we just evaluate them once on volumetric qps like normal.
+// Maybe someday we will have nodal materials too.  So maybe the actual
+// solution to this is that nodes can have "multiple" loop types - i.e. they
+// are allowed to run in one or more of the available loop types. Other
+// inter-loop-type dependencies normally require the depended on value to be
+// cached, but since materials are "duplicated" into every loop they are in,
+// this isn't a problem.
+
 enum class LoopType
 {
-  None,
+  None, // represents values calculated "outside" of any loop (e.g. postprocessors that depend on only other postprocessors).
   Nodal,
   Face,
   Elemental,
@@ -18,9 +72,20 @@ enum class LoopType
 //     * stored vs not-stored: their computed value at mesh points is cached and does not need to be
 //       recomputed across consecutive loops
 //     * loop type: nodal, elemental, etc.
-//     * reduction operation vs not: e.g. postprocessors perform a reducing operation.
+//     * reduction operation vs not: e.g. postprocessors perform a reducing operation.  i.e. when is
+//       a value available - immediately upon visiting the location, or not until after an entire
+//       loop/reduce operation.
 //
-// All reducing nodes store implicitly cache/store their values, but some non-reducing do as well.
+// All reducing nodes implicitly cache/store their values, but some non-reducing do as well (e.g. aux variables).  The basic algorithm is as follows:
+//
+//     1.  If any node depends on a reducing node, it must be calculated in a
+//     separate/later loop. - otherwise it can go in the same loop
+//
+//     2.  Nodes assigned to the same loop in rule 1 that have different loop
+//     types must be further split into separate loops.
+//
+//     3.  Fix remaining dependencies on uncached nodes in another loop by
+//     duplicating these uncached nodes into every loop that needs them.
 
 class Node
 {
@@ -29,6 +94,13 @@ public:
     : _name(name), _cached(cached), _reducing(reducing), _looptype(l)
   {
   }
+
+  // loop returns a loop number for this node.  Loop numbers are ascending as
+  // nodes get deeper in the dependency heirarchy. Loop number for a node is
+  // equal to the maximum loop number of all nodes that depend on this node,
+  // unless this node is reducing (i.e. aggregation) - then the loop number is
+  // one greater than the maximum loop number of all nodes that depend on this
+  // node.
   int loop() const {
     if (_dependers.size() == 0)
       return 0;
@@ -145,10 +217,12 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
   }
 }
 
-// walk n's dependencies recursively traversing over elemental nodes and stopping at non-elemental
-// nodes adding all visited elemental nodes.  The blocking non-elemental nodes are not added to
-// the set.  This transitively adds all uncached dependencies of n to the current
-// loop/subgraph.
+// walk n's dependencies recursively traversing over elemental nodes and
+// stopping at nodes of a different loop type, adding all visited elemental
+// nodes.  The blocking different-loop-type nodes are not added to the set.
+// This also stops on cached dependencies that don't need to be recalculated
+// as part of the current loop. This transitively adds all uncached
+// dependencies of n to the current loop/subgraph.
 void
 floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 {
@@ -166,10 +240,17 @@ computeLoops(Graph & g)
   std::vector<std::vector<std::vector<Node *>>> loops;
 
   int maxloop = 0;
+  // start at all the leaf nodes - i.e. nodes that have "no" dependencies -
+  // i.e. things that are either output data or residuals.
+
+  // start at all the root nodes - i.e. things that came from a previous time
+  // step or that come from the ether - i.e. solution/variable-values, cached
+  // values, etc.  Find the max loop number (most deep in dep tree)
   for (auto n : g.roots())
     if (n->loop() > maxloop)
       maxloop = n->loop();
 
+  // This adds all nodes of a given loop number to a particular loop subgraph.
   std::vector<Subgraph> loopgraphs(maxloop + 1);
   for (auto n : g.nodes())
     loopgraphs[n->loop()].add(n);
@@ -177,7 +258,7 @@ computeLoops(Graph & g)
   int loopindex = 0;
   for (auto & g : loopgraphs)
   {
-    // divide up the loop numbers into each loop subtype
+    // further divide up each loop subgraph into one subgraph for each loop type.
     Subgraph g_node;
     Subgraph g_elem;
     Subgraph g_none;
@@ -194,7 +275,14 @@ computeLoops(Graph & g)
         g_none.add(n);
     }
 
-    // add in uncached dependencies transitively for each loop type
+    // add/pull in uncached dependencies transitively for each loop type.
+    // This is necessary, because initially each node is assigned only a
+    // single loop-number/subgraph.  So we need to duplicate (uncached) nodes
+    // that are depended on by nodes in different loops into each of those
+    // loops (i.e. material properties).  Cached dependencies do not need to
+    // be duplicated since nodes are initially assigned to the highest loop
+    // number (ie. deepest/earliest loop) they are needed in.
+
     for (auto n : g_elem.leaves())
       floodUp(n, g_elem, LoopType::Elemental, n->loop());
     for (auto n : g_node.leaves())
