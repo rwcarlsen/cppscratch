@@ -4,6 +4,7 @@
 #include <vector>
 #include <map>
 #include <list>
+#include <sstream>
 
 // Notes/thoughts:
 //
@@ -59,12 +60,36 @@
 // cached, but since materials are "duplicated" into every loop they are in,
 // this isn't a problem.
 
-enum class LoopType
+enum class LoopCategory
 {
   None, // represents values calculated "outside" of any loop (e.g. postprocessors that depend on only other postprocessors).
   Nodal,
-  Face,
-  Elemental,
+  Face, // FV
+  Elemental_onElem,
+  Elemental_onElemFV, // different quadrature points than normal/FE
+  Elemental_onBoundary,
+  Elemental_onInternalSide,
+};
+
+class LoopType
+{
+public:
+  LoopType(LoopCategory cat = LoopCategory::Elemental_onElem, unsigned int blk = 0) : block(blk), category(cat) {}
+  bool operator==(const LoopType & other)
+  {
+    return other.block == block && other.category == category;
+  }
+  bool operator!=(const LoopType & other)
+  {
+    return !(*this == other);
+  }
+  bool operator<(const LoopType & other) const
+  {
+    return category != other.category ? category < other.category : block < other.block;
+  }
+  // subdomain/block or boundary ID
+  unsigned int block;
+  LoopCategory category;
 };
 
 // Nodes in the dependency graph have three properties that we track:
@@ -90,7 +115,7 @@ enum class LoopType
 class Node
 {
 public:
-  Node(const std::string & name, bool cached, bool reducing, LoopType l = LoopType::Elemental)
+  Node(const std::string & name, bool cached, bool reducing, LoopType l)
     : _name(name), _cached(cached), _reducing(reducing), _looptype(l)
   {
   }
@@ -146,8 +171,8 @@ private:
 class Subgraph
 {
 public:
-  Subgraph() {}
-  Subgraph(std::set<Node *> & nodes) : _nodes(nodes) {}
+  Subgraph() {_id = _next_id++;}
+  Subgraph(std::set<Node *> & nodes) : _nodes(nodes) {_id = _next_id++;}
   virtual std::set<Node *> roots() const
   {
     std::set<Node *> rs;
@@ -168,6 +193,7 @@ public:
   virtual void remove(Node * n) { _nodes.erase(n); }
   virtual bool contains(Node * n) const { return _nodes.count(n) > 0; }
   virtual std::set<Node *> nodes() const { return _nodes; }
+  int id() const {return _id;}
 
 private:
   std::set<Node *> filter(std::set<Node *> ns) const
@@ -178,8 +204,13 @@ private:
         filtered.insert(n);
     return filtered;
   }
+
+  static int _next_id;
+  int _id;
   std::set<Node *> _nodes;
 };
+
+int Subgraph::_next_id = 1;
 
 class Graph : public Subgraph
 {
@@ -226,7 +257,9 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
 void
 floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 {
-  if ((n->isCached() && n->loop() >= curr_loop))
+  if (n->loopType() != t)
+    return;
+  if (n->isCached() && (n->loop() > curr_loop))
     return;
 
   g.add(n);
@@ -235,7 +268,7 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 }
 
 std::vector<std::vector<std::vector<Node *>>>
-computeLoops(Graph & g)
+computeLoops(Graph & g, std::vector<Subgraph> & partitions)
 {
   std::vector<std::vector<std::vector<Node *>>> loops;
 
@@ -259,20 +292,12 @@ computeLoops(Graph & g)
   for (auto & g : loopgraphs)
   {
     // further divide up each loop subgraph into one subgraph for each loop type.
-    Subgraph g_node;
-    Subgraph g_elem;
-    Subgraph g_none;
-    Subgraph g_face;
+    std::map<LoopType, Subgraph> subgraphs;
     for (auto n : g.nodes())
     {
-      if (n->loopType() == LoopType::Elemental)
-        g_elem.add(n);
-      else if (n->loopType() == LoopType::Nodal)
-        g_node.add(n);
-      else if (n->loopType() == LoopType::Face)
-        g_face.add(n);
-      else if (n->loopType() == LoopType::None)
-        g_none.add(n);
+      if (subgraphs.count(n->loopType()) == 0)
+        subgraphs[n->loopType()] = {};
+      subgraphs[n->loopType()].add(n);
     }
 
     // add/pull in uncached dependencies transitively for each loop type.
@@ -283,39 +308,121 @@ computeLoops(Graph & g)
     // be duplicated since nodes are initially assigned to the highest loop
     // number (ie. deepest/earliest loop) they are needed in.
 
-    for (auto n : g_elem.leaves())
-      floodUp(n, g_elem, LoopType::Elemental, n->loop());
-    for (auto n : g_node.leaves())
-      floodUp(n, g_node, LoopType::Nodal, n->loop());
-    for (auto n : g_face.leaves())
-      floodUp(n, g_face, LoopType::Face, n->loop());
-    for (auto n : g_none.leaves())
-      floodUp(n, g_none, LoopType::None, n->loop());
+    for (auto & entry : subgraphs)
+    {
+      auto & g = entry.second;
+      for (auto n : g.leaves())
+        floodUp(n, g, n->loopType(), n->loop());
+    }
 
     // topological sort the nodes for each loop
-    if (g_elem.nodes().size() > 0)
+    for (auto & entry : subgraphs)
     {
+      auto & g = entry.second;
+      partitions.push_back(g);
       loops.push_back({});
-      execOrder(g_elem, loops.back());
-    }
-    if (g_node.nodes().size() > 0)
-    {
-      loops.push_back({});
-      execOrder(g_node, loops.back());
-    }
-    if (g_face.nodes().size() > 0)
-    {
-      loops.push_back({});
-      execOrder(g_face, loops.back());
-    }
-    if (g_none.nodes().size() > 0)
-    {
-      loops.push_back({});
-      execOrder(g_none, loops.back());
+      execOrder(g, loops.back());
     }
   }
   std::reverse(loops.begin(), loops.end());
   return loops;
+}
+
+std::string
+loopTypeStr(const LoopType & l)
+{
+  std::string s = "Loop:";
+  if (l.category == LoopCategory::None)
+    s += "None";
+  else if (l.category == LoopCategory::Nodal)
+    s += "Nodal";
+  else if (l.category == LoopCategory::Face)
+    s += "Face";
+  else if (l.category == LoopCategory::Elemental_onElem)
+    s += "Elemental_onElem";
+  else if (l.category == LoopCategory::Elemental_onElemFV)
+    s += "Elemental_onElemFV";
+  else if (l.category == LoopCategory::Elemental_onBoundary)
+    s += "Elemental_onBoundary";
+  else if (l.category == LoopCategory::Elemental_onInternalSide)
+    s += "Elemental_onInternalSide";
+  else
+    s += "UNKNOWN";
+  s += ":block" + std::to_string(l.block);
+  return s;
+}
+
+std::string
+nodeLabel(const Subgraph & g, Node * n)
+{
+  std::string s = n->str() + " on partition " + std::to_string(g.id()) + "\\n";
+  s += loopTypeStr(n->loopType());
+  if (n->isCached() || n->isReducing())
+  {
+    s += "\\n(";
+    if (n->isCached())
+    {
+      s += "cached";
+      if (n->isReducing())
+        s += ",";
+    }
+    if (n->isReducing())
+      s += "reducing";
+    s += ")";
+  }
+  return s;
+}
+
+std::string
+dotEdge(const Subgraph & g, Node * src, Node * dst)
+{
+  if (dst)
+    return "\"" + nodeLabel(g, src) + "\" -> \"" + nodeLabel(g, dst) + "\";\n";
+  return "\"" + nodeLabel(g, src) + "\";\n";
+}
+
+std::string
+dotConnections(const Subgraph & g)
+{
+  std::stringstream ss;
+  for (auto n : g.nodes())
+  {
+    bool island = true;
+    for (auto dep : n->deps())
+      if (g.contains(dep))
+      {
+        island = false;
+        ss << dotEdge(g, n, dep);
+      }
+    for (auto dep : n->dependers())
+      if (g.contains(dep))
+        island = false;
+
+    if (island)
+      ss << dotEdge(g, , nullptr);
+  }
+  return ss.str();
+}
+
+std::string
+dotGraphMerged(const std::vector<Subgraph> & graphs)
+{
+  std::stringstream ss;
+  ss << "digraph g {\n";
+  for (auto & g : graphs)
+    ss << dotConnections(g);
+  ss << "}\n";
+  return ss.str();
+}
+
+std::string
+dotGraph(const Subgraph & g)
+{
+  std::stringstream ss;
+  ss << "digraph g {\n";
+  dotConnections(g);
+  ss << "}\n";
+  return ss.str();
 }
 
 void
@@ -339,54 +446,55 @@ printLoops(std::vector<std::vector<std::vector<Node *>>> loops)
 void
 case1b()
 {
-  std::cout << "::::: CASE 1b  :::::\n";
   Graph graph;
-  auto a = graph.create("a", false, false);
-  auto b = graph.create("b", true, true);
-  auto c = graph.create("c", false, false);
-  auto d = graph.create("d", false, false);
+  auto a = graph.create("a", false, false, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", false, false, LoopType());
+  auto d = graph.create("d", false, false, LoopType());
 
-  auto e = graph.create("e", true, true, LoopType::Nodal);
-  auto f = graph.create("f", false, false, LoopType::Nodal);
+  auto e = graph.create("e", true, true, LoopType(LoopCategory::Nodal));
+  auto f = graph.create("f", false, false, LoopType(LoopCategory::Nodal));
   a->needs(b, c, d);
   b->needs(c);
   e->needs(b);
   f->needs(e);
 
-  auto loops = computeLoops(graph);
-  printLoops(loops);
+  std::vector<Subgraph> partitions;
+  auto loops = computeLoops(graph, partitions);
+  //printLoops(loops);
+  std::cout << dotGraph(graph);
 }
 
 void
 case1()
 {
-  std::cout << "::::: CASE 1 :::::\n";
   Graph graph;
-  auto a = graph.create("a", false, false);
-  auto b = graph.create("b", true, true);
-  auto c = graph.create("c", false, false);
-  auto d = graph.create("d", false, false);
+  auto a = graph.create("a", false, false, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", false, false, LoopType());
+  auto d = graph.create("d", false, false, LoopType());
   a->needs(b, c, d);
   b->needs(c);
 
-  auto loops = computeLoops(graph);
+  std::vector<Subgraph> partitions;
+  auto loops = computeLoops(graph, partitions);
   printLoops(loops);
+  std::cout << dotGraph(graph);
 }
 
 void
 case2()
 {
-  std::cout << "::::: CASE 2 :::::\n";
   Graph graph;
-  auto a = graph.create("a", false, false);
-  auto b = graph.create("b", true, true);
-  auto c = graph.create("c", false, false);
-  auto d = graph.create("d", false, false);
-  auto e = graph.create("e", true, true);
-  auto f = graph.create("f", true, true);
-  auto g = graph.create("g", true, true);
-  auto h = graph.create("h", false, false);
-  auto k = graph.create("k", false, false);
+  auto a = graph.create("a", false, false, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", false, false, LoopType());
+  auto d = graph.create("d", false, false, LoopType());
+  auto e = graph.create("e", true, true, LoopType());
+  auto f = graph.create("f", true, true, LoopType());
+  auto g = graph.create("g", true, true, LoopType());
+  auto h = graph.create("h", false, false, LoopType());
+  auto k = graph.create("k", false, false, LoopType());
   k->needs(f, g);
   f->needs(b);
   b->needs(a);
@@ -395,24 +503,25 @@ case2()
   e->needs(d);
   d->needs(c, b);
 
-  auto loops = computeLoops(graph);
-  printLoops(loops);
+  std::vector<Subgraph> partitions;
+  auto loops = computeLoops(graph, partitions);
+  //printLoops(loops);
+  std::cout << dotGraph(graph);
 }
 
 void
 case3()
 {
-  std::cout << "::::: CASE 3 :::::\n";
   Graph graph;
-  auto a = graph.create("a", false, false);
-  auto b = graph.create("b", true, true);
-  auto c = graph.create("c", false, false);
-  auto d = graph.create("d", true, false);
-  auto e = graph.create("e", true, true);
-  auto f = graph.create("f", true, true);
-  auto g = graph.create("g", true, true);
-  auto h = graph.create("h", false, false);
-  auto k = graph.create("k", false, false);
+  auto a = graph.create("a", false, false, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", false, false, LoopType());
+  auto d = graph.create("d", true, false, LoopType());
+  auto e = graph.create("e", true, true, LoopType());
+  auto f = graph.create("f", true, true, LoopType());
+  auto g = graph.create("g", true, true, LoopType());
+  auto h = graph.create("h", false, false, LoopType());
+  auto k = graph.create("k", false, false, LoopType());
   k->needs(f, g);
   f->needs(b);
   b->needs(a);
@@ -421,16 +530,22 @@ case3()
   e->needs(d);
   d->needs(c, b);
 
-  auto loops = computeLoops(graph);
-  printLoops(loops);
+  std::vector<Subgraph> partitions;
+  auto loops = computeLoops(graph, partitions);
+  //printLoops(loops);
+  std::cout << dotGraphMerged(partitions);
 }
 
 int
 main(int narg, char ** argv)
 {
-  case1();
-  case1b();
-  case2();
+  //std::cout << "::::: CASE 1  :::::\n";
+  //case1();
+  //std::cout << "::::: CASE 1b  :::::\n";
+  //case1b();
+  //std::cout << "::::: CASE 2  :::::\n";
+  //case2();
+  //std::cout << "::::: CASE 3  :::::\n";
   case3();
 
   return 0;
