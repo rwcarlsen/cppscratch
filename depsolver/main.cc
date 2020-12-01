@@ -373,11 +373,22 @@ nodeLabel(const Subgraph & g, Node * n)
   return s;
 }
 
+// outputs an a dot script edge pointing from src to dst.  If dst is nullptr,
+// then src is created as an "island" node.  If dst is not contained in the
+// subgraph g, then the node is filled with an off-yellow color - indicating
+// that this node represents a value that is cached and should already be
+// available (i.e. computed in a prior loop) - filled nodes are not
+// (re)calculated in the current loop, just (re)used.
 std::string
 dotEdge(const Subgraph & g, Node * src, Node * dst)
 {
   if (dst)
-    return "\"" + nodeLabel(g, src) + "\" -> \"" + nodeLabel(g, dst) + "\";\n";
+  {
+    if (g.contains(dst))
+      return "\"" + nodeLabel(g, src) + "\" -> \"" + nodeLabel(g, dst) + "\";\n";
+    std::string dstlabel = "\"" + nodeLabel(g, dst) + "\"";
+    return "\"" + nodeLabel(g, src) + "\" -> " + dstlabel + ";\n" + dstlabel  + " [style=filled, fillcolor=khaki];\n";
+  }
   return "\"" + nodeLabel(g, src) + "\";\n";
 }
 
@@ -389,21 +400,21 @@ dotConnections(const Subgraph & g)
   {
     bool island = true;
     for (auto dep : n->deps())
-      if (g.contains(dep))
-      {
-        island = false;
-        ss << dotEdge(g, n, dep);
-      }
+    {
+      island = false;
+      ss << dotEdge(g, n, dep);
+    }
     for (auto dep : n->dependers())
       if (g.contains(dep))
         island = false;
 
     if (island)
-      ss << dotEdge(g, , nullptr);
+      ss << dotEdge(g, n, nullptr);
   }
   return ss.str();
 }
 
+// show all the given subgraphs on a single graph.
 std::string
 dotGraphMerged(const std::vector<Subgraph> & graphs)
 {
