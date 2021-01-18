@@ -73,7 +73,7 @@ enum class LoopCategory
 class LoopType
 {
 public:
-  LoopType(LoopCategory cat = LoopCategory::Elemental_onElem, unsigned int blk = 0) : block(blk), category(cat) {}
+  LoopType(LoopCategory cat = LoopCategory::Elemental_onElem, int blk = 0) : block(blk), category(cat) {}
   bool operator==(const LoopType & other)
   {
     return other.block == block && other.category == category;
@@ -87,7 +87,7 @@ public:
     return category != other.category ? category < other.category : block < other.block;
   }
   // subdomain/block or boundary ID
-  unsigned int block;
+  int block;
   LoopCategory category;
 };
 
@@ -131,11 +131,20 @@ public:
 
     int maxloop = (*_dependers.begin())->loop();
     for (auto dep : _dependers)
-      if (dep->loop() > maxloop)
-        maxloop = dep->loop();
-
-    if (isReducing())
-      return maxloop + 1;
+    {
+      // TODO: does the loop number really need to increment if the loop type
+      // changes - is this the right logic?
+      if (dep->loopType() != loopType() || isReducing())
+      {
+        if (dep->loop() + 1 > maxloop)
+          maxloop = dep->loop() + 1;
+      }
+      else
+      {
+        if (dep->loop() > maxloop)
+          maxloop = dep->loop();
+      }
+    }
     return maxloop;
   }
 

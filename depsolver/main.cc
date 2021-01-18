@@ -1,6 +1,7 @@
 
 #include "graph.h"
 #include "show.h"
+#include "builder.h"
 
 #include <iostream>
 #include <sstream>
@@ -94,7 +95,7 @@ case3()
 
   std::vector<Subgraph> partitions;
   auto loops = computeLoops(graph, partitions);
-  //printLoops(loops);
+  printLoops(loops);
   std::cout << dotGraphMerged(partitions);
 }
 
@@ -109,6 +110,9 @@ main(int narg, char ** argv)
   //case2();
   //std::cout << "::::: CASE 3  :::::\n";
   case3();
+
+  TransitionMatrix m;
+  buildGraph(m);
 
   return 0;
 }

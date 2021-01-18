@@ -8,25 +8,30 @@
 #include <iostream>
 
 std::string
+loopCategoryStr(const LoopCategory cat)
+{
+  if (cat == LoopCategory::None)
+    return "None";
+  else if (cat == LoopCategory::Nodal)
+    return "Nodal";
+  else if (cat == LoopCategory::Face)
+    return "Face";
+  else if (cat == LoopCategory::Elemental_onElem)
+    return "Elemental_onElem";
+  else if (cat == LoopCategory::Elemental_onElemFV)
+    return "Elemental_onElemFV";
+  else if (cat == LoopCategory::Elemental_onBoundary)
+    return "Elemental_onBoundary";
+  else if (cat == LoopCategory::Elemental_onInternalSide)
+    return "Elemental_onInternalSide";
+  return "UNKNOWN";
+}
+
+std::string
 loopTypeStr(const LoopType & l)
 {
   std::string s = "Loop:";
-  if (l.category == LoopCategory::None)
-    s += "None";
-  else if (l.category == LoopCategory::Nodal)
-    s += "Nodal";
-  else if (l.category == LoopCategory::Face)
-    s += "Face";
-  else if (l.category == LoopCategory::Elemental_onElem)
-    s += "Elemental_onElem";
-  else if (l.category == LoopCategory::Elemental_onElemFV)
-    s += "Elemental_onElemFV";
-  else if (l.category == LoopCategory::Elemental_onBoundary)
-    s += "Elemental_onBoundary";
-  else if (l.category == LoopCategory::Elemental_onInternalSide)
-    s += "Elemental_onInternalSide";
-  else
-    s += "UNKNOWN";
+  s += loopCategoryStr(l.category);
   s += ":block" + std::to_string(l.block);
   return s;
 }
