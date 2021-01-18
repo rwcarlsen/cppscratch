@@ -15,32 +15,36 @@ public:
 
 struct Candidate
 {
-  std::unique_ptr<Node> node;
+  Node * node;
   std::vector<std::string> dependencies;
   std::vector<double> probabilities;
 };
 
-using TransitionMatrix = std::map<std::string, Candidate>;
+struct TransitionMatrix
+{
+  Graph graph;
+  std::map<std::string, Candidate> matrix;
+};
 
 void
 addNode(TransitionMatrix & m, const std::string & name, LoopCategory cat, int block, bool cached, bool reducing)
 {
-  Candidate c{std::unique_ptr<Node>(new Node(name, cached, reducing, LoopType(cat, block))), {}, {}};
-  m[name] = std::move(c);
+  Node * n = m.graph.create(name, cached, reducing, LoopType(cat, block));
+  m.matrix[name] = {n, {}, {}};
 }
 
 void
 addTransition(TransitionMatrix & m, const std::string & from, const std::string & to, double probability)
 {
-  if (m.count(from) == 0)
+  if (m.matrix.count(from) == 0)
     throw std::runtime_error("cannot add transition for non-existing graph node " + from);
 
-  auto & deps = m[from].dependencies;
+  auto & deps = m.matrix[from].dependencies;
   if (std::find(deps.begin(), deps.end(), to) != deps.end())
     throw std::runtime_error("node " + from + " already has transition to node " + to);
 
   deps.push_back(to);
-  m[from].probabilities.push_back(probability);
+  m.matrix[from].probabilities.push_back(probability);
 }
 
 void
@@ -49,10 +53,18 @@ generateNodes(TransitionMatrix & m, const std::string & base_name, bool cached, 
   std::vector<LoopCategory> cats = { LoopCategory::None, LoopCategory::Nodal, LoopCategory::Face, LoopCategory::Elemental_onElem, LoopCategory::Elemental_onElemFV, LoopCategory::Elemental_onBoundary, LoopCategory::Elemental_onInternalSide};
   for (int i = 1; i < nblocks+1; i++)
     for (int j = 0; j < cats.size(); j++)
-      addNode(m, base_name + "_" + loopCategoryStr(cats[j]) + "_" + std::to_string(i), cats[j], i, cached, reducing);
+      addNode(m, base_name + "_" + loopCategoryStr(cats[j]) + "_block" + std::to_string(i), cats[j], i, cached, reducing);
 }
 
-void buildGraph(TransitionMatrix & m)
+// Foo_None_block1
+// Foo_Nodal_block1
+// Foo_Face_block1
+// Foo_Elemental_onElem_block1
+// Foo_Elemental_onElemFV_block1
+// Foo_Elemental_onBoundary_block1
+// Foo_Elemental_onInternalSide_block1
+
+void buildTransitionMatrix(TransitionMatrix & m)
 {
   generateNodes(m, "Var1", false, false, 0);
   generateNodes(m, "Var2", false, false, 0);
@@ -110,5 +122,47 @@ void buildGraph(TransitionMatrix & m)
   generateNodes(m, "Marker", true, false, 0);
   generateNodes(m, "Indicator", true, false, 0);
   generateNodes(m, "Mesh", true, true, 0);
+
+  addTransition(m, "Kernel1_Elemental_onElem_block1", "Material3_Elemental_onElem_block1", 0.5);
+  addTransition(m, "Solution", "Kernel1_Elemental_onElem_block1", 0.5);
+}
+
+void
+walkTransitions(TransitionMatrix & m, std::set<Node *> stack, Node * n)
+{
+  auto & deps = m.matrix[n->name()].dependencies;
+  auto & probs = m.matrix[n->name()].probabilities;
+
+  // choose a dependency
+  if (deps.size() == 0)
+    return;
+
+  std::uniform_real_distribution<double> unif(0, 1);
+  std::default_random_engine re;
+  double r = unif(re);
+
+  double prob_sum = 0;
+  for (int i = 0; i < probs.size(); i++)
+  {
+    auto dep = m.matrix[deps[i]].node;
+    prob_sum += probs[i];
+    if (r > prob_sum || stack.count(dep) > 0) // skip/disallow cyclical deps
+      continue;
+
+    stack.insert(dep);
+    n->needs(dep);
+    walkTransitions(m, stack, dep);
+    stack.erase(dep);
+    break;
+  }
+
+}
+
+void
+buildGraph(TransitionMatrix & m, int n_paths_from_each_leaf)
+{
+  for (auto leaf : m.graph.leaves())
+    for (int i = 0; i < n_paths_from_each_leaf; i++)
+      walkTransitions(m, {}, leaf);
 }
 

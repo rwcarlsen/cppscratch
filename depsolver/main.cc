@@ -112,7 +112,9 @@ main(int narg, char ** argv)
   case3();
 
   TransitionMatrix m;
-  buildGraph(m);
+  buildTransitionMatrix(m);
+  int n_paths_from_each_leaf = 5;
+  buildGraph(m, n_paths_from_each_leaf);
 
   return 0;
 }

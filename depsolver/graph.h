@@ -156,8 +156,11 @@ public:
   LoopType loopType() const { return _looptype; }
 
   std::string str() { return _name; }
+  std::string name() { return _name; }
 
   void needs() {}
+
+  void clearDeps() {_deps.clear(); _dependers.clear();}
 
   template <typename... Args>
   void needs(Node * n, Args... args)
@@ -167,8 +170,20 @@ public:
     needs(args...);
   }
 
+  int id() {return _id;}
+
+  void setId(int id)
+  {
+    if (_id != -1)
+      throw std::runtime_error("setting node id multiple times");
+    if (id == -1)
+      throw std::runtime_error("cannot set node id to -1");
+    _id = id;
+  }
+
 private:
   std::string _name;
+  int _id = -1;
   bool _cached;
   bool _reducing;
   LoopType _looptype;
@@ -227,8 +242,28 @@ public:
   Node * create(Args... args)
   {
     _node_storage.emplace_back(new Node(std::forward<Args>(args)...));
+    _node_storage.back()->setId(_node_storage.size() - 1);
     add(_node_storage.back().get());
     return _node_storage.back().get();
+  }
+
+  Graph clone()
+  {
+    Graph copy;
+    // make a copy of all the nodes
+    for (auto & n : _node_storage)
+      copy._node_storage.emplace_back(new Node(*n));
+
+    for (int i = 0; i < copy._node_storage.size(); i++)
+    {
+      auto n_orig = _node_storage[i].get();
+      auto n_copy = copy._node_storage[i].get();
+      // reset each node's dependencies, reconnecting each node to the new copies
+      n_copy->clearDeps();
+      for (auto dep : n_orig->deps())
+        n_copy->needs(copy._node_storage[dep->id()].get());
+    }
+    return copy;
   }
 
 private:
