@@ -104,8 +104,14 @@ dotGraphMerged(const std::vector<Subgraph> & graphs)
 {
   std::stringstream ss;
   ss << "digraph g {\n";
+  int count = 0;
   for (auto & g : graphs)
+  {
+    count++;
+    ss << "subgraph g" << count << "{\n";
     ss << dotConnections(g);
+    ss << "}\n";
+  }
   ss << "}\n";
   return ss.str();
 }
