@@ -109,12 +109,20 @@ main(int narg, char ** argv)
   //std::cout << "::::: CASE 2  :::::\n";
   //case2();
   //std::cout << "::::: CASE 3  :::::\n";
-  case3();
+  //case3();
 
   TransitionMatrix m;
-  buildTransitionMatrix(m);
+  auto start_node = buildTransitionMatrix(m);
   int n_paths_from_each_leaf = 5;
   buildGraph(m, n_paths_from_each_leaf);
+
+  std::vector<Subgraph> partitions;
+  auto loops = computeLoops(m.graph, partitions);
+  std::vector<Subgraph> filtered_partitions;
+  for (auto & g : partitions)
+    if (g.reachable({start_node}))
+      filtered_partitions.push_back(g);
+  std::cout << dotGraphMerged(filtered_partitions);
 
   return 0;
 }

@@ -204,6 +204,19 @@ public:
         rs.insert(n);
     return rs;
   }
+  // returns true if nodes in this graph are reachable from or dependend on
+  // transitively by the given from nodes.
+  bool reachable(std::set<Node *> from)
+  {
+    for (auto n : from)
+    {
+      if (contains(n))
+        return true;
+      if (reachable(n->deps()))
+        return true;
+    }
+    return false;
+  }
   virtual std::set<Node *> leaves() const
   {
     std::set<Node *> leaves;

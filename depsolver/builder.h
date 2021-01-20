@@ -39,6 +39,19 @@ struct TransitionMatrix
   std::set<std::string> candidate_cached;
 };
 
+bool
+haveNode(TransitionMatrix & m, const std::string & base_name, LoopCategory cat, int block)
+{
+  LoopType want(cat, block);
+  auto & nodes = m.candidates[base_name];
+  for (auto n : nodes)
+  {
+    if (want == n->loopType())
+      return true;
+  }
+  return false;
+}
+
 Node *
 getNode(TransitionMatrix & m, const std::string & base_name, LoopCategory cat, int block)
 {
@@ -49,14 +62,13 @@ getNode(TransitionMatrix & m, const std::string & base_name, LoopCategory cat, i
     if (want == n->loopType())
       return n;
   }
-  throw std::runtime_error("node not found");
+  throw std::runtime_error("node \"" + nodeName(base_name, block, cat) + "\" not found");
 }
 
 void
 addNode(TransitionMatrix & m, const std::string & base_name, LoopCategory cat, int block, bool cached, bool reducing)
 {
-  auto name = nodeName(base_name, block, cat);
-  Node * n = m.graph.create(name, cached, reducing, LoopType(cat, block));
+  Node * n = m.graph.create(base_name, cached, reducing, LoopType(cat, block));
   m.candidate_blocks[base_name].insert(block);
   m.candidate_cats[base_name].insert(cat);
   if (reducing)
@@ -67,17 +79,21 @@ addNode(TransitionMatrix & m, const std::string & base_name, LoopCategory cat, i
 }
 
 void
-bindDep(TransitionMatrix & m, const std::string & node_base, const std::string & dep_base)
+bindDep(TransitionMatrix & m, const std::string & node_base, const std::string & dep_base, bool allow_missing_dep_blocks = false)
 {
+  if (m.candidate_cats.count(node_base) == 0)
+    throw std::runtime_error("cannot bind non-existing dependency \"" + node_base + "\" to a dependency");
+  if (m.candidate_cats.count(dep_base) == 0)
+    throw std::runtime_error("cannot bind node to non-existing dependency \"" + dep_base + "\"");
   for (auto cat : m.candidate_cats[node_base])
   {
     auto dstcat = cat;
     if (m.candidate_cats[dep_base].count(cat) == 0)
     {
       // the dependency does not have the matching category
-      // so it must be a cached reducing node - enforce this
-      if (m.candidate_reducing.count(dep_base) == 0 || m.candidate_cached.count(dep_base) == 0)
-        throw std::runtime_error("cannot bind to a dependency with differing loop category that isn't both reducing and cached");
+      // so it must be a cached node - enforce this
+      if (m.candidate_cached.count(dep_base) == 0)
+        throw std::runtime_error("cannot bind to a dependency with differing loop category that isn't cached");
       if (m.candidate_cats[dep_base].size() > 1)
         throw std::runtime_error("cannot bind to a dependency with differing loop category that has nodes in multiple categories");
       dstcat = *(m.candidate_cats[dep_base].begin());
@@ -92,8 +108,13 @@ bindDep(TransitionMatrix & m, const std::string & node_base, const std::string &
         for (auto depblock : m.candidate_blocks[dep_base])
           srcnode->needs(getNode(m, dep_base, dstcat, depblock));
       else
+      {
         // depend on the same dep block as each src block
-        srcnode->needs(getNode(m, dep_base, dstcat, srcblock));
+        if (haveNode(m, dep_base, dstcat, srcblock))
+          srcnode->needs(getNode(m, dep_base, dstcat, srcblock));
+        else if (!allow_missing_dep_blocks)
+          std::runtime_error("cannot bind node " + nodeName(node_base, srcblock, cat) + " to dependency " + dep_base + " not defined on block " + std::to_string(srcblock));
+      }
     }
   }
 }
@@ -107,9 +128,9 @@ addTransition(TransitionMatrix & m, const std::string & node_base, const std::st
     if (m.candidate_cats[dep_base].count(cat) == 0)
     {
       // the dependency does not have the matching category
-      // so it must be a cached reducing node - enforce this
-      if (m.candidate_reducing.count(dep_base) == 0 || m.candidate_cached.count(dep_base) == 0)
-        throw std::runtime_error("cannot transition to a dependency with differing loop category that isn't both reducing and cached");
+      // so it must be a cached node - enforce this
+      if (m.candidate_cached.count(dep_base) == 0)
+        throw std::runtime_error("cannot transition to a dependency with differing loop category that isn't cached");
       if (m.candidate_cats[dep_base].size() > 1)
         throw std::runtime_error("cannot transition to a dependency with differing loop category that has nodes in multiple categories");
       dstcat = *(m.candidate_cats[dep_base].begin());
@@ -204,7 +225,9 @@ buildGraph(TransitionMatrix & m, int n_paths_from_each_leaf)
       walkTransitions(m, {}, leaf);
 }
 
-void buildTransitionMatrix(TransitionMatrix & m)
+// returns the "start"/master node
+Node *
+buildTransitionMatrix(TransitionMatrix & m)
 {
   std::vector<LoopCategory> elemental = {LoopCategory::Elemental_onElem};
   std::vector<LoopCategory> nodal = {LoopCategory::Nodal};
@@ -214,28 +237,24 @@ void buildTransitionMatrix(TransitionMatrix & m)
   generateNodes(m, "Var1", false, false, blocks);
   generateNodes(m, "Var2", false, false, blocks);
 
-  generateNodes(m, "Kernel1", false, false, blocks, elemental);
-  generateNodes(m, "Kernel2", false, false, blocks, elemental);
-  generateNodes(m, "Kernel3", false, false, blocks, elemental);
-  generateNodes(m, "Kernel4", false, false, {1, 2, 3, 4}, elemental);
-  generateNodes(m, "Kernel5", false, false, blocks, elemental);
-  generateNodes(m, "BC1", false, false, blocks, elemental);
-  generateNodes(m, "BC2", false, false, blocks, elemental);
-  generateNodes(m, "BC3", false, false, blocks, elemental);
-  generateNodes(m, "BC4", false, false, blocks, elemental);
-  generateNodes(m, "BC5", false, false, blocks, elemental);
+  generateNodes(m, "Kernel1", true, true, blocks, elemental);
+  generateNodes(m, "Kernel2", true, true, blocks, elemental);
+  generateNodes(m, "Kernel3", true, true, blocks, elemental);
+  generateNodes(m, "BC1", true, true, blocks, elemental);
+  generateNodes(m, "BC2", true, true, blocks, elemental);
+  generateNodes(m, "BC3", true, true, blocks, elemental);
 
-  generateNodes(m, "Solution", true, true, blocks, allCats());
-  generateNodes(m, "Damper1", false, false, blocks, nodal);
-  generateNodes(m, "FinalSolution", true, false, blocks, nodal);
+  generateNodes(m, "Solution", true, false);
+  generateNodes(m, "Damper1", true, true, blocks, nodal);
+  generateNodes(m, "FinalSolution", true, false);
 
   // auxvars can be calc'd/used anywhere - any loop type - as long as they are nodal
   generateNodes(m, "AuxVar1", false, false, blocks);
   generateNodes(m, "AuxVar2", false, false, blocks);
-  generateNodes(m, "AuxKernel1", false, false, blocks, nodal);
-  generateNodes(m, "AuxKernel2", false, false, blocks, nodal);
+  generateNodes(m, "AuxKernel1", true, true, blocks, nodal);
+  generateNodes(m, "AuxKernel2", true, true, blocks, nodal);
 
-  generateNodes(m, "AuxSolution", true, true, blocks, allCats());
+  generateNodes(m, "AuxSolution", true, false, blocks, allCats());
 
   generateNodes(m, "Material1", false, false, blocks);
   generateNodes(m, "Material2", false, false, blocks);
@@ -251,31 +270,24 @@ void buildTransitionMatrix(TransitionMatrix & m)
   bindDep(m, "Kernel1", "Var1");
   bindDep(m, "Kernel2", "Var1");
   bindDep(m, "Kernel3", "Var2");
-  bindDep(m, "Kernel4", "Var2");
-  bindDep(m, "Kernel5", "Var3");
   bindDep(m, "BC1", "Var1");
   bindDep(m, "BC2", "Var1");
-  bindDep(m, "BC3", "Var2");
-  bindDep(m, "BC4", "Var3");
-  bindDep(m, "BC5", "Var3");
+  bindDep(m, "BC3", "Var1");
   // variables must depend on mesh
   bindDep(m, "Var1", "Mesh");
   bindDep(m, "Var2", "Mesh");
-  bindDep(m, "Var3", "Mesh");
   // solution depends on all kernels and bcs
   bindDep(m, "Solution", "Kernel1");
   bindDep(m, "Solution", "Kernel2");
   bindDep(m, "Solution", "Kernel3");
-  bindDep(m, "Solution", "Kernel4");
-  bindDep(m, "Solution", "Kernel5");
   bindDep(m, "Solution", "BC1");
   bindDep(m, "Solution", "BC2");
   bindDep(m, "Solution", "BC3");
-  bindDep(m, "Solution", "BC4");
-  bindDep(m, "Solution", "BC5");
+  bindDep(m, "FinalSolution", "Solution");
 
   addTransition(m, "Kernel1", "Material1", 0.6);
   addTransition(m, "Kernel1", "Material2", 0.3);
   addTransition(m, "Kernel1", "Material3", 0.1);
+  return getNode(m, "FinalSolution", LoopCategory::None, 0);
 }
 
