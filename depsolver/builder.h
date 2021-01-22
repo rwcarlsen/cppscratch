@@ -307,6 +307,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "AuxKernel1", "Material2", 0.1);
   addTransition(m, "AuxKernel1", "Material3", 0.1);
   addTransition(m, "AuxKernel1", "Postprocessor1", 0.1);
+  addTransition(m, "AuxKernel1", "Postprocessor2", 0.1);
   addTransition(m, "AuxKernel1", "AuxVar1", 0.1);
   addTransition(m, "AuxKernel1", "AuxVar2", 0.1);
   addTransition(m, "AuxKernel1", "Var1", 0.1);
@@ -316,6 +317,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "AuxKernel2", "Material2", 0.1);
   addTransition(m, "AuxKernel2", "Material3", 0.1);
   addTransition(m, "AuxKernel2", "Postprocessor1", 0.1);
+  addTransition(m, "AuxKernel2", "Postprocessor2", 0.1);
   addTransition(m, "AuxKernel2", "AuxVar1", 0.1);
   addTransition(m, "AuxKernel2", "AuxVar2", 0.1);
   addTransition(m, "AuxKernel2", "Var1", 0.1);
@@ -325,6 +327,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "Kernel1", "Material2", 0.1);
   addTransition(m, "Kernel1", "Material3", 0.1);
   addTransition(m, "Kernel1", "Postprocessor1", 0.1);
+  addTransition(m, "Kernel1", "Postprocessor2", 0.1);
   addTransition(m, "Kernel1", "AuxVar1", 0.1);
   addTransition(m, "Kernel1", "AuxVar2", 0.1);
   addTransition(m, "Kernel1", "Var1", 0.1);
@@ -334,6 +337,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "Kernel2", "Material2", 0.1);
   addTransition(m, "Kernel2", "Material3", 0.1);
   addTransition(m, "Kernel2", "Postprocessor1", 0.1);
+  addTransition(m, "Kernel2", "Postprocessor2", 0.1);
   addTransition(m, "Kernel2", "AuxVar1", 0.1);
   addTransition(m, "Kernel2", "AuxVar2", 0.1);
   addTransition(m, "Kernel2", "Var1", 0.1);
@@ -343,6 +347,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "Kernel3", "Material2", 0.1);
   addTransition(m, "Kernel3", "Material3", 0.1);
   addTransition(m, "Kernel3", "Postprocessor1", 0.1);
+  addTransition(m, "Kernel3", "Postprocessor2", 0.1);
   addTransition(m, "Kernel3", "AuxVar1", 0.1);
   addTransition(m, "Kernel3", "AuxVar2", 0.1);
   addTransition(m, "Kernel3", "Var1", 0.1);
@@ -352,6 +357,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "BC1", "Material2", 0.1);
   addTransition(m, "BC1", "Material3", 0.1);
   addTransition(m, "BC1", "Postprocessor1", 0.1);
+  addTransition(m, "BC1", "Postprocessor2", 0.1);
   addTransition(m, "BC1", "AuxVar1", 0.1);
   addTransition(m, "BC1", "AuxVar2", 0.1);
   addTransition(m, "BC1", "Var1", 0.1);
@@ -361,6 +367,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "BC2", "Material2", 0.1);
   addTransition(m, "BC2", "Material3", 0.1);
   addTransition(m, "BC2", "Postprocessor1", 0.1);
+  addTransition(m, "BC2", "Postprocessor2", 0.1);
   addTransition(m, "BC2", "AuxVar1", 0.1);
   addTransition(m, "BC2", "AuxVar2", 0.1);
   addTransition(m, "BC2", "Var1", 0.1);
@@ -370,12 +377,32 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "BC3", "Material2", 0.1);
   addTransition(m, "BC3", "Material3", 0.1);
   addTransition(m, "BC3", "Postprocessor1", 0.1);
+  addTransition(m, "BC3", "Postprocessor2", 0.1);
   addTransition(m, "BC3", "AuxVar1", 0.1);
   addTransition(m, "BC3", "AuxVar2", 0.1);
   addTransition(m, "BC3", "Var1", 0.1);
   addTransition(m, "BC3", "Var2", 0.1);
 
+  addTransition(m, "Postprocessor1", "Material1", 0.1);
+  addTransition(m, "Postprocessor1", "Material2", 0.1);
+  addTransition(m, "Postprocessor1", "Material3", 0.1);
+  addTransition(m, "Postprocessor1", "AuxVar1", 0.1);
+  addTransition(m, "Postprocessor1", "AuxVar2", 0.1);
+  addTransition(m, "Postprocessor1", "Var1", 0.1);
+  addTransition(m, "Postprocessor1", "Var2", 0.1);
+  addTransition(m, "Postprocessor1", "Postprocessor2", 0.1);
+
+  addTransition(m, "Postprocessor2", "Material1", 0.1);
+  addTransition(m, "Postprocessor2", "Material2", 0.1);
+  addTransition(m, "Postprocessor2", "Material3", 0.1);
+  addTransition(m, "Postprocessor2", "AuxVar1", 0.1);
+  addTransition(m, "Postprocessor2", "AuxVar2", 0.1);
+  addTransition(m, "Postprocessor2", "Var1", 0.1);
+  addTransition(m, "Postprocessor2", "Var2", 0.1);
+  addTransition(m, "Postprocessor2", "Postprocessor1", 0.1);
+
   addTransition(m, "Material1", "Postprocessor1", 0.1);
+  addTransition(m, "Material1", "Postprocessor2", 0.1);
   addTransition(m, "Material1", "Var1", 0.1);
   addTransition(m, "Material1", "Var2", 0.1);
   addTransition(m, "Material1", "Material2", 0.1);
@@ -384,6 +411,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "Material1", "AuxVar2", 0.1);
 
   addTransition(m, "Material2", "Postprocessor1", 0.1);
+  addTransition(m, "Material2", "Postprocessor2", 0.1);
   addTransition(m, "Material2", "Var1", 0.1);
   addTransition(m, "Material2", "Var2", 0.1);
   addTransition(m, "Material2", "Material1", 0.1);
@@ -392,6 +420,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   addTransition(m, "Material2", "AuxVar2", 0.1);
 
   addTransition(m, "Material3", "Postprocessor1", 0.1);
+  addTransition(m, "Material3", "Postprocessor2", 0.1);
   addTransition(m, "Material3", "Var1", 0.1);
   addTransition(m, "Material3", "Var2", 0.1);
   addTransition(m, "Material3", "Material1", 0.1);

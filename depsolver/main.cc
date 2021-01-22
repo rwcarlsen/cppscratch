@@ -122,9 +122,9 @@ main(int narg, char ** argv)
   for (auto & g : partitions)
     if (g.reachable({start_node}))
       filtered_partitions.push_back(g);
-  //std::cout << dotGraphMerged(filtered_partitions);
-  Subgraph g = m.graph.reachableFrom(start_node);
-  std::cout << dotGraph(g);
+  std::cout << dotGraphMerged(filtered_partitions);
+  //Subgraph g = m.graph.reachableFrom(start_node);
+  //std::cout << dotGraph(g);
 
   return 0;
 }
