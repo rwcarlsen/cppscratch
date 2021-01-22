@@ -187,7 +187,7 @@ generateNodes(TransitionMatrix & m, const std::string & base_name, bool cached, 
 }
 
 void
-walkTransitions(TransitionMatrix & m, std::set<Node *> stack, std::default_random_engine & engine, Node * n)
+walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node * n)
 {
   auto & deps_map = m.matrix[n];
 
@@ -210,12 +210,10 @@ walkTransitions(TransitionMatrix & m, std::set<Node *> stack, std::default_rando
     for (auto dep : deps)
     {
       // skip/disallow cyclical deps
-      if (stack.count(dep) > 0)
+      if (n->isDepender(dep))
         break;
       n->needs(dep);
-      stack.insert(dep);
-      walkTransitions(m, stack, engine, dep);
-      stack.erase(dep);
+      walkTransitions(m, engine, dep);
     }
     break;
   }
@@ -226,7 +224,7 @@ buildGraph(TransitionMatrix & m, Node * start, int n_walks)
 {
   std::default_random_engine re;
   for (int i = 0; i < n_walks; i++)
-    walkTransitions(m, {}, re, start);
+    walkTransitions(m, re, start);
 }
 
 // returns the "start"/master node
@@ -263,7 +261,8 @@ buildTransitionMatrix(TransitionMatrix & m)
   generateNodes(m, "Material1", false, false, blocks);
   generateNodes(m, "Material2", false, false, blocks);
   generateNodes(m, "Material3", false, false, blocks);
-  generateNodes(m, "Postprocessor1", true, true, blocks);
+  generateNodes(m, "Postprocessor1", true, true, blocks, elemental);
+  generateNodes(m, "Postprocessor2", true, true, blocks, nodal);
   generateNodes(m, "Output1", false, true, blocks);
 
   generateNodes(m, "Marker", true, false, blocks, elemental);

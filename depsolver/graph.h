@@ -150,6 +150,20 @@ public:
 
   std::set<Node *> deps() const { return _deps; }
   std::set<Node *> dependers() const { return _dependers; }
+  bool isDepender(Node * n) const
+  {
+    std::set<Node *> all;
+    transitiveDependers(all);
+    return all.count(n) > 0;
+  }
+  void transitiveDependers(std::set<Node *> & all) const
+  {
+    for (auto n : _dependers)
+    {
+      all.insert(n);
+      n->transitiveDependers(all);
+    }
+  }
 
   bool isReducing() const { return _reducing; }
   bool isCached() const { return _cached || _reducing; }
