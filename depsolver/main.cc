@@ -113,8 +113,8 @@ main(int narg, char ** argv)
 
   TransitionMatrix m;
   auto start_node = buildTransitionMatrix(m);
-  int n_paths_from_each_leaf = 5;
-  buildGraph(m, n_paths_from_each_leaf);
+  int n_walks = 5;
+  buildGraph(m, start_node, n_walks);
 
   std::vector<Subgraph> partitions;
   auto loops = computeLoops(m.graph, partitions);
@@ -122,7 +122,9 @@ main(int narg, char ** argv)
   for (auto & g : partitions)
     if (g.reachable({start_node}))
       filtered_partitions.push_back(g);
-  std::cout << dotGraphMerged(filtered_partitions);
+  //std::cout << dotGraphMerged(filtered_partitions);
+  Subgraph g = m.graph.reachableFrom(start_node);
+  std::cout << dotGraph(g);
 
   return 0;
 }

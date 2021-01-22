@@ -19,6 +19,12 @@ nodeName(const std::string base_name, int block, LoopCategory cat)
   return base_name + "_" + loopCategoryStr(cat) + "_block" + std::to_string(block);
 }
 
+std::string
+nodeName(Node * n)
+{
+  return n->name() + "_" + loopCategoryStr(n->loopType().category) + "_block" + std::to_string(n->loopType().block);
+}
+
 struct Transitions
 {
   std::vector<std::vector<Node *>> dependencies;
@@ -136,7 +142,6 @@ addTransition(TransitionMatrix & m, const std::string & node_base, const std::st
       dstcat = *(m.candidate_cats[dep_base].begin());
     }
 
-    // the dependency has the matching category
     for (auto srcblock : m.candidate_blocks[node_base])
     {
       auto srcnode = getNode(m, node_base, cat, srcblock);
@@ -182,7 +187,7 @@ generateNodes(TransitionMatrix & m, const std::string & base_name, bool cached, 
 }
 
 void
-walkTransitions(TransitionMatrix & m, std::set<Node *> stack, Node * n)
+walkTransitions(TransitionMatrix & m, std::set<Node *> stack, std::default_random_engine & engine, Node * n)
 {
   auto & deps_map = m.matrix[n];
 
@@ -191,8 +196,7 @@ walkTransitions(TransitionMatrix & m, std::set<Node *> stack, Node * n)
     return;
 
   std::uniform_real_distribution<double> unif(0, 1);
-  std::default_random_engine re;
-  double r = unif(re);
+  double r = unif(engine);
 
   double prob_sum = 0;
   for (auto it : deps_map)
@@ -210,7 +214,7 @@ walkTransitions(TransitionMatrix & m, std::set<Node *> stack, Node * n)
         break;
       n->needs(dep);
       stack.insert(dep);
-      walkTransitions(m, stack, dep);
+      walkTransitions(m, stack, engine, dep);
       stack.erase(dep);
     }
     break;
@@ -218,11 +222,11 @@ walkTransitions(TransitionMatrix & m, std::set<Node *> stack, Node * n)
 }
 
 void
-buildGraph(TransitionMatrix & m, int n_paths_from_each_leaf)
+buildGraph(TransitionMatrix & m, Node * start, int n_walks)
 {
-  for (auto leaf : m.graph.leaves())
-    for (int i = 0; i < n_paths_from_each_leaf; i++)
-      walkTransitions(m, {}, leaf);
+  std::default_random_engine re;
+  for (int i = 0; i < n_walks; i++)
+    walkTransitions(m, {}, re, start);
 }
 
 // returns the "start"/master node
@@ -284,10 +288,116 @@ buildTransitionMatrix(TransitionMatrix & m)
   bindDep(m, "Solution", "BC2");
   bindDep(m, "Solution", "BC3");
   bindDep(m, "FinalSolution", "Solution");
+  // aux deps
+  bindDep(m, "AuxSolution", "AuxKernel1");
+  bindDep(m, "AuxSolution", "AuxKernel2");
 
-  addTransition(m, "Kernel1", "Material1", 0.6);
-  addTransition(m, "Kernel1", "Material2", 0.3);
+  // these transitions must mirror the bound/forced dependencies
+  addTransition(m, "FinalSolution", "Solution", 1);
+  addTransition(m, "Solution", "Kernel1", 0.2);
+  addTransition(m, "Solution", "Kernel2", 0.2);
+  addTransition(m, "Solution", "Kernel3", 0.2);
+  addTransition(m, "Solution", "BC1", 0.2);
+  addTransition(m, "Solution", "BC2", 0.1);
+  addTransition(m, "Solution", "BC3", 0.1);
+  addTransition(m, "AuxSolution", "AuxKernel1", 0.4);
+  addTransition(m, "AuxSolution", "AuxKernel2", 0.4);
+
+  addTransition(m, "AuxKernel1", "Material1", 0.1);
+  addTransition(m, "AuxKernel1", "Material2", 0.1);
+  addTransition(m, "AuxKernel1", "Material3", 0.1);
+  addTransition(m, "AuxKernel1", "Postprocessor1", 0.1);
+  addTransition(m, "AuxKernel1", "AuxVar1", 0.1);
+  addTransition(m, "AuxKernel1", "AuxVar2", 0.1);
+  addTransition(m, "AuxKernel1", "Var1", 0.1);
+  addTransition(m, "AuxKernel1", "Var2", 0.1);
+
+  addTransition(m, "AuxKernel2", "Material1", 0.1);
+  addTransition(m, "AuxKernel2", "Material2", 0.1);
+  addTransition(m, "AuxKernel2", "Material3", 0.1);
+  addTransition(m, "AuxKernel2", "Postprocessor1", 0.1);
+  addTransition(m, "AuxKernel2", "AuxVar1", 0.1);
+  addTransition(m, "AuxKernel2", "AuxVar2", 0.1);
+  addTransition(m, "AuxKernel2", "Var1", 0.1);
+  addTransition(m, "AuxKernel2", "Var2", 0.1);
+
+  addTransition(m, "Kernel1", "Material1", 0.1);
+  addTransition(m, "Kernel1", "Material2", 0.1);
   addTransition(m, "Kernel1", "Material3", 0.1);
+  addTransition(m, "Kernel1", "Postprocessor1", 0.1);
+  addTransition(m, "Kernel1", "AuxVar1", 0.1);
+  addTransition(m, "Kernel1", "AuxVar2", 0.1);
+  addTransition(m, "Kernel1", "Var1", 0.1);
+  addTransition(m, "Kernel1", "Var2", 0.1);
+
+  addTransition(m, "Kernel2", "Material1", 0.1);
+  addTransition(m, "Kernel2", "Material2", 0.1);
+  addTransition(m, "Kernel2", "Material3", 0.1);
+  addTransition(m, "Kernel2", "Postprocessor1", 0.1);
+  addTransition(m, "Kernel2", "AuxVar1", 0.1);
+  addTransition(m, "Kernel2", "AuxVar2", 0.1);
+  addTransition(m, "Kernel2", "Var1", 0.1);
+  addTransition(m, "Kernel2", "Var2", 0.1);
+
+  addTransition(m, "Kernel3", "Material1", 0.1);
+  addTransition(m, "Kernel3", "Material2", 0.1);
+  addTransition(m, "Kernel3", "Material3", 0.1);
+  addTransition(m, "Kernel3", "Postprocessor1", 0.1);
+  addTransition(m, "Kernel3", "AuxVar1", 0.1);
+  addTransition(m, "Kernel3", "AuxVar2", 0.1);
+  addTransition(m, "Kernel3", "Var1", 0.1);
+  addTransition(m, "Kernel3", "Var2", 0.1);
+
+  addTransition(m, "BC1", "Material1", 0.1);
+  addTransition(m, "BC1", "Material2", 0.1);
+  addTransition(m, "BC1", "Material3", 0.1);
+  addTransition(m, "BC1", "Postprocessor1", 0.1);
+  addTransition(m, "BC1", "AuxVar1", 0.1);
+  addTransition(m, "BC1", "AuxVar2", 0.1);
+  addTransition(m, "BC1", "Var1", 0.1);
+  addTransition(m, "BC1", "Var2", 0.1);
+
+  addTransition(m, "BC2", "Material1", 0.1);
+  addTransition(m, "BC2", "Material2", 0.1);
+  addTransition(m, "BC2", "Material3", 0.1);
+  addTransition(m, "BC2", "Postprocessor1", 0.1);
+  addTransition(m, "BC2", "AuxVar1", 0.1);
+  addTransition(m, "BC2", "AuxVar2", 0.1);
+  addTransition(m, "BC2", "Var1", 0.1);
+  addTransition(m, "BC2", "Var2", 0.1);
+
+  addTransition(m, "BC3", "Material1", 0.1);
+  addTransition(m, "BC3", "Material2", 0.1);
+  addTransition(m, "BC3", "Material3", 0.1);
+  addTransition(m, "BC3", "Postprocessor1", 0.1);
+  addTransition(m, "BC3", "AuxVar1", 0.1);
+  addTransition(m, "BC3", "AuxVar2", 0.1);
+  addTransition(m, "BC3", "Var1", 0.1);
+  addTransition(m, "BC3", "Var2", 0.1);
+
+  addTransition(m, "Material1", "Postprocessor1", 0.1);
+  addTransition(m, "Material1", "Var1", 0.1);
+  addTransition(m, "Material1", "Var2", 0.1);
+  addTransition(m, "Material1", "Material2", 0.1);
+  addTransition(m, "Material1", "Material3", 0.1);
+  addTransition(m, "Material1", "AuxVar1", 0.1);
+  addTransition(m, "Material1", "AuxVar2", 0.1);
+
+  addTransition(m, "Material2", "Postprocessor1", 0.1);
+  addTransition(m, "Material2", "Var1", 0.1);
+  addTransition(m, "Material2", "Var2", 0.1);
+  addTransition(m, "Material2", "Material1", 0.1);
+  addTransition(m, "Material2", "Material3", 0.1);
+  addTransition(m, "Material2", "AuxVar1", 0.1);
+  addTransition(m, "Material2", "AuxVar2", 0.1);
+
+  addTransition(m, "Material3", "Postprocessor1", 0.1);
+  addTransition(m, "Material3", "Var1", 0.1);
+  addTransition(m, "Material3", "Var2", 0.1);
+  addTransition(m, "Material3", "Material1", 0.1);
+  addTransition(m, "Material3", "Material2", 0.1);
+  addTransition(m, "Material3", "AuxVar1", 0.1);
+  addTransition(m, "Material3", "AuxVar2", 0.1);
   return getNode(m, "FinalSolution", LoopCategory::None, 0);
 }
 

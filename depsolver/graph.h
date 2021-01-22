@@ -195,7 +195,7 @@ class Subgraph
 {
 public:
   Subgraph() {_id = _next_id++;}
-  Subgraph(std::set<Node *> & nodes) : _nodes(nodes) {_id = _next_id++;}
+  Subgraph(const std::set<Node *> & nodes) : _nodes(nodes) {_id = _next_id++;}
   virtual std::set<Node *> roots() const
   {
     std::set<Node *> rs;
@@ -204,7 +204,7 @@ public:
         rs.insert(n);
     return rs;
   }
-  // returns true if nodes in this graph are reachable from or dependend on
+  // returns true if any nodes in this graph are reachable from or dependend on
   // transitively by the given from nodes.
   bool reachable(std::set<Node *> from)
   {
@@ -216,6 +216,17 @@ public:
         return true;
     }
     return false;
+  }
+  Subgraph reachableFrom(Node * from)
+  {
+    Subgraph can_reach;
+    for (auto n : nodes())
+    {
+      Subgraph g({n});
+      if (g.reachable({from}))
+        can_reach.add(n);
+    }
+    return can_reach;
   }
   virtual std::set<Node *> leaves() const
   {

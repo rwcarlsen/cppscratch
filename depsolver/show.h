@@ -121,7 +121,7 @@ dotGraph(const Subgraph & g)
 {
   std::stringstream ss;
   ss << "digraph g {\n";
-  dotConnections(g);
+  ss << dotConnections(g);
   ss << "}\n";
   return ss.str();
 }
