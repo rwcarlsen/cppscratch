@@ -196,8 +196,11 @@ generateNodes(TransitionMatrix & m, const std::string & base_name, bool cached, 
       addNode(m, base_name, cats[j], block, cached, reducing);
 }
 
+// If sync_blocks is true, then all nodes of with the same name as n (i.e.
+// nodes in every block with name n) will get the same dependencies as each
+// other.
 void
-walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node * n)
+walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node * n, bool sync_blocks)
 {
   auto & deps_map = m.matrix[n];
 
@@ -222,19 +225,27 @@ walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node 
       // skip/disallow cyclical deps
       if (n->isDepender(dep))
         break;
-      n->needs(dep);
-      walkTransitions(m, engine, dep);
+      if (sync_blocks)
+        bindDep(m, n->name(), dep->name());
+      else
+        n->needs(dep);
     }
+    // we doo all the needs/dep-setting calls first at once - to ensure
+    // breadth-first generation - this prevents weird dependency conflicts
+    // relating to avoiding cyclical dependencies and depending on reducing
+    // nodes.
+    for (auto dep : deps)
+      walkTransitions(m, engine, dep, sync_blocks);
     break;
   }
 }
 
 void
-buildGraph(TransitionMatrix & m, Node * start, int n_walks)
+buildGraph(TransitionMatrix & m, Node * start, int n_walks, bool sync_blocks)
 {
   std::default_random_engine re;
   for (int i = 0; i < n_walks; i++)
-    walkTransitions(m, re, start);
+    walkTransitions(m, re, start, sync_blocks);
 }
 
 // returns the "start"/master node

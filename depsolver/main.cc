@@ -111,10 +111,11 @@ main(int narg, char ** argv)
   //std::cout << "::::: CASE 3  :::::\n";
   //case3();
 
+  int n_walks = 5;
+  bool sync_blocks = true;
   TransitionMatrix m;
   auto start_node = buildTransitionMatrix(m);
-  int n_walks = 5;
-  buildGraph(m, start_node, n_walks);
+  buildGraph(m, start_node, n_walks, sync_blocks);
 
   std::vector<Subgraph> partitions;
   auto loops = computeLoops(m.graph, partitions);
@@ -122,9 +123,10 @@ main(int narg, char ** argv)
   for (auto & g : partitions)
     if (g.reachable({start_node}))
       filtered_partitions.push_back(g);
-  std::cout << dotGraphMerged(filtered_partitions);
+  //std::cout << dotGraphMerged(filtered_partitions);
   //Subgraph g = m.graph.reachableFrom(start_node);
   //std::cout << dotGraph(g);
+  printLoops(loops);
 
   return 0;
 }
