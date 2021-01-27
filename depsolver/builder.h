@@ -253,8 +253,9 @@ Node *
 buildTransitionMatrix(TransitionMatrix & m)
 {
   std::vector<LoopCategory> elemental = {LoopCategory::Elemental_onElem};
+  std::vector<LoopCategory> boundary = {LoopCategory::Elemental_onBoundary};
   std::vector<LoopCategory> nodal = {LoopCategory::Nodal};
-  std::vector<int> blocks = {1, 2, 3, 4, 5};
+  std::vector<int> blocks = {1, 2, 3};
 
   // vars can be calc'd/used anywhere - any loop type
   generateNodes(m, "Var1", false, false, blocks);
@@ -263,9 +264,9 @@ buildTransitionMatrix(TransitionMatrix & m)
   generateNodes(m, "Kernel1", true, true, blocks, elemental);
   generateNodes(m, "Kernel2", true, true, blocks, elemental);
   generateNodes(m, "Kernel3", true, true, blocks, elemental);
-  generateNodes(m, "BC1", true, true, blocks, elemental);
-  generateNodes(m, "BC2", true, true, blocks, elemental);
-  generateNodes(m, "BC3", true, true, blocks, elemental);
+  generateNodes(m, "BC1", true, true, blocks, boundary);
+  generateNodes(m, "BC2", true, true, blocks, boundary);
+  generateNodes(m, "BC3", true, true, blocks, boundary);
 
   generateNodes(m, "Solution", true, false);
   generateNodes(m, "Damper1", true, true, blocks, nodal);
@@ -277,7 +278,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   generateNodes(m, "AuxKernel1", true, true, blocks, nodal);
   generateNodes(m, "AuxKernel2", true, true, blocks, nodal);
 
-  generateNodes(m, "AuxSolution", true, false, blocks, allCats());
+  generateNodes(m, "AuxSolution", true, false, blocks);
 
   generateNodes(m, "Material1", false, false, blocks);
   generateNodes(m, "Material2", false, false, blocks);
