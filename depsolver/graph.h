@@ -391,20 +391,13 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     }
   }
 
-  // figure out which loop nodes to merge
-  //
-  std::set<Node *> staged_loops = graphgraph.leaves();
-  while (staged_loops.size() > 0)
-  {
-    std::map<LoopCategory, Node *> loops_by_cat;
-    for (auto loop : staged_loops)
-      loops_by_cat[loop->loopType().category] = loop;
+  // TODO: Insert actual merging algorithm here.  graphgraph is a graph where
+  // each node represents a mesh loop (global dep graph partition) with
+  // dependencies between loops already having been constructed.  Figure out
+  // how to merge this graph here.
 
-    for (auto entry : loops_by_cat)
-    {
-      if
-    }
-  }
+  // TODO: map the merged graph back into an updated set of new partitions
+  // with all the (non-meta) actual objects as nodes.
 }
 
 std::vector<std::vector<std::vector<Node *>>>
