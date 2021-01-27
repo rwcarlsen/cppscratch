@@ -112,12 +112,22 @@ bindDep(TransitionMatrix & m, const std::string & node_base, const std::string &
       if(m.candidate_reducing.count(dep_base) > 0)
         // depend on all dep blocks for each src block
         for (auto depblock : m.candidate_blocks[dep_base])
-          srcnode->needs(getNode(m, dep_base, dstcat, depblock));
+        {
+          auto dep = getNode(m, dep_base, dstcat, depblock);
+          if (srcnode->isDepender(dep))
+            continue;
+          srcnode->needs(dep);
+        }
       else
       {
         // depend on the same dep block as each src block
         if (haveNode(m, dep_base, dstcat, srcblock))
-          srcnode->needs(getNode(m, dep_base, dstcat, srcblock));
+        {
+          auto dep = getNode(m, dep_base, dstcat, srcblock);
+          if (srcnode->isDepender(dep))
+            continue;
+          srcnode->needs(dep);
+        }
         else if (!allow_missing_dep_blocks)
           std::runtime_error("cannot bind node " + nodeName(node_base, srcblock, cat) + " to dependency " + dep_base + " not defined on block " + std::to_string(srcblock));
       }
