@@ -30,7 +30,7 @@ loopCategoryStr(const LoopCategory cat)
 std::string
 loopTypeStr(const LoopType & l)
 {
-  std::string s = "Loop:";
+  std::string s;
   s += loopCategoryStr(l.category);
   s += ":block" + std::to_string(l.block);
   return s;
@@ -132,7 +132,7 @@ printLoops(std::vector<std::vector<std::vector<Node *>>> loops)
   for (size_t i = 0; i < loops.size(); i++)
   {
     auto & loop = loops[i];
-    std::cout << "loop " << i + 1 << ":\n";
+    std::cout << "loop " << i + 1 << " (" << loopTypeStr(loop[0][0]->loopType()) << "):\n";
     for (size_t g = 0; g < loop.size(); g++)
     {
       auto & group = loop[g];
