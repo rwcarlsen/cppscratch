@@ -350,6 +350,63 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
     floodUp(dep, g, t, curr_loop);
 }
 
+// TODO: once we have the graph split into partitions, there are some
+// optimizations that can be performed to combine partitions/loops together
+// that don't depend on each other.  The algorithm will need to:
+//
+// * look at every combination of loop/partition pairs
+//
+// * determine if the two partitions are siblings - this means that neither is
+//   a dependency of the other and neither depends on the other.
+//
+// * if they are siblings and have the same loop type, then they can be
+//   merged
+//
+void
+mergeSiblings(std::vector<Subgraph> & partitions)
+{
+  // create a graph where each node represents one of the total dep graph partitions
+  std::map<Node *, Node *> node_to_loopnode;
+  std::map<Node *, Subgraph> loopnode_to_partition;
+  Graph graphgraph;
+  for (int i = 0; i < partitions.size(); i++)
+  {
+    auto part = partitions[i];
+    auto loop_node = graphgraph.create("loop" + std::to_string(i), false, false, part.nodes()[0].loopType());
+    loopnode_to_partition[loop_node] = part;
+    for (auto n : part)
+      node_to_loopnode[n] = loop_node;
+  }
+
+  // construct all inter-partition dependencies
+  for (int i = 0; i < graphgraph.nodes().size(); i++)
+  {
+    for (auto loopnode : graphgraph.nodes())
+    {
+      for (auto root : loop.roots())
+      {
+        for (auto dep : root->deps())
+          loopnode->needs(node_to_loopnode[dep]);
+      }
+    }
+  }
+
+  // figure out which loop nodes to merge
+  //
+  std::set<Node *> staged_loops = graphgraph.leaves();
+  while (staged_loops.size() > 0)
+  {
+    std::map<LoopCategory, Node *> loops_by_cat;
+    for (auto loop : staged_loops)
+      loops_by_cat[loop->loopType().category] = loop;
+
+    for (auto entry : loops_by_cat)
+    {
+      if
+    }
+  }
+}
+
 std::vector<std::vector<std::vector<Node *>>>
 computeLoops(Graph & g, std::vector<Subgraph> & partitions)
 {
