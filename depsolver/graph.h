@@ -183,6 +183,11 @@ public:
     n->_dependers.insert(this);
     needs(args...);
   }
+  void needs(const std::set<Node *> & deps)
+  {
+    for (auto dep : deps)
+      needs(dep);
+  }
 
   int id() {return _id;}
 
@@ -210,6 +215,25 @@ class Subgraph
 public:
   Subgraph() {_id = _next_id++;}
   Subgraph(const std::set<Node *> & nodes) : _nodes(nodes) {_id = _next_id++;}
+
+  // Returns the minimum number of jumps it takes to get from any root node of
+  // the dependency graph to this node.
+  int mindepth(Node * n)
+  {
+    return n->mindepth();
+    auto deps = filter(n->deps());
+    if (deps.size() == 0)
+      return 0;
+
+    for (auto dep : deps)
+    {
+      int min = std::numeric_limits<int>::max();
+      for (auto dep : _deps)
+        if (mindepth(dep) + 1 < min)
+          min = mindepth(dep) + 1;
+      return min;
+    }
+  }
   // returns true if any nodes in this graph are reachable from or dependend on
   // transitively by the given from nodes.
   bool reachable(std::set<Node *> from)
@@ -367,13 +391,13 @@ mergeSiblings(std::vector<Subgraph> & partitions)
 {
   // create a graph where each node represents one of the total dep graph partitions
   std::map<Node *, Node *> node_to_loopnode;
-  std::map<Node *, Subgraph> loopnode_to_partition;
+  std::map<Node *, std::set<int>> loopnode_to_partitions;
   Graph graphgraph;
   for (int i = 0; i < partitions.size(); i++)
   {
     auto part = partitions[i];
     auto loop_node = graphgraph.create("loop" + std::to_string(i), false, false, part.nodes()[0].loopType());
-    loopnode_to_partition[loop_node] = part;
+    loopnode_to_partitions[loop_node].insert(i);
     for (auto n : part)
       node_to_loopnode[n] = loop_node;
   }
@@ -391,10 +415,65 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     }
   }
 
-  // TODO: Insert actual merging algorithm here.  graphgraph is a graph where
-  // each node represents a mesh loop (global dep graph partition) with
-  // dependencies between loops already having been constructed.  Figure out
-  // how to merge this graph here.
+  // Merge algorithm
+  int merged_loops = 1;
+  while(merged_loops > 0)
+  {
+    merged_loops = 0;
+    std::map<LoopCategory, std::set<Node *>> loops_by_cat;
+    for (auto loop : graphgraph.nodes())
+      loops_by_cat[loop->loopType().category].insert(loop);
+
+    // TODO: realistically - we also want to first choose to merge nodes to
+    // merge from among all loop categories that are the lowest in depth
+    // as possible
+    for (auto entry : loops_by_cat)
+    {
+      auto cat = entry.first;
+      auto loops = entry.second;
+
+      // find the two loops with the highest position or lowest depth in the
+      // loop graph.
+      // TODO: this process must take into account whether the two loops/nodes
+      // depend on each other :-( - how to do that?
+      int depth1 = std::numeric_limits<int>::max()
+      int depth2 = std::numeric_limits<int>::max()
+      Node * loop1 = nullptr
+      Node * loop2 = nullptr
+      for (auto loop : loops)
+      {
+        if (graphgraph.mindepth(loop) < depth1)
+        {
+          depth2 = depth1;
+          loop2 = loop1;
+          depth1 = graphgraph.mindepth(loop);
+          loop1 = loop;
+        } else if (graphgraph.mindepth(loop) < depth2)
+        {
+          depth2 = graphgraph.mindepth(loop);
+          loop2 = loop;
+        }
+      }
+
+      if (loop1->isDepender(loop2) || loop2->isDepender(loop1))
+        continue;
+
+      // and merge them together.
+      merged_loops++;
+      auto merged = graphgraph.create(loop1->name(), false, false, loop1->loopType());
+      merged->needs(loop1->deps());
+      merged->needs(loop2->deps());
+      graphgraph.remove(loop1);
+      graphgraph.remove(loop2);
+      auto loop1_ids = loopnode_to_partitions[loop1];
+      auto loop2_ids = loopnode_to_partitions[loop2];
+      loopnode_to_partitions.erase(loop1);
+      loopnode_to_partitions.erase(loop2);
+      loopnode_to_partitions[merged].insert(loop1_ids.begin(), loop1_ids.end());
+      loopnode_to_partitions[merged].insert(loop2_ids.begin(), loop2_ids.end());
+      break;
+    }
+  }
 
   // TODO: map the merged graph back into an updated set of new partitions
   // with all the (non-meta) actual objects as nodes.
