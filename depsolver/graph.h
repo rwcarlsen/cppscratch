@@ -4,6 +4,7 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <iostream>
 
 // Notes/thoughts:
 //
@@ -220,19 +221,17 @@ public:
   // the dependency graph to this node.
   int mindepth(Node * n)
   {
-    return n->mindepth();
     auto deps = filter(n->deps());
     if (deps.size() == 0)
       return 0;
 
+    int min = std::numeric_limits<int>::max();
     for (auto dep : deps)
     {
-      int min = std::numeric_limits<int>::max();
-      for (auto dep : _deps)
-        if (mindepth(dep) + 1 < min)
-          min = mindepth(dep) + 1;
-      return min;
+      if (mindepth(dep) + 1 < min)
+        min = mindepth(dep) + 1;
     }
+    return min;
   }
   // returns true if any nodes in this graph are reachable from or dependend on
   // transitively by the given from nodes.
@@ -280,7 +279,14 @@ public:
   virtual void remove(Node * n) { _nodes.erase(n); }
   virtual bool contains(Node * n) const { return _nodes.count(n) > 0; }
   virtual std::set<Node *> nodes() const { return _nodes; }
+  virtual void clear() { _nodes.clear(); }
+  virtual void merge(const Subgraph & other)
+  {
+    if (&other != this)
+      _nodes.insert(other._nodes.begin(), other._nodes.end());
+  }
   int id() const {return _id;}
+  int size() const {return _nodes.size();}
 
 private:
   std::set<Node *> filter(std::set<Node *> ns) const
@@ -385,20 +391,19 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 //
 // * if they are siblings and have the same loop type, then they can be
 //   merged
-//
 void
 mergeSiblings(std::vector<Subgraph> & partitions)
 {
   // create a graph where each node represents one of the total dep graph partitions
   std::map<Node *, Node *> node_to_loopnode;
-  std::map<Node *, std::set<int>> loopnode_to_partitions;
+  std::map<Node *, int> loopnode_to_partition;
   Graph graphgraph;
   for (int i = 0; i < partitions.size(); i++)
   {
-    auto part = partitions[i];
-    auto loop_node = graphgraph.create("loop" + std::to_string(i), false, false, part.nodes()[0].loopType());
-    loopnode_to_partitions[loop_node].insert(i);
-    for (auto n : part)
+    auto & part = partitions[i];
+    auto loop_node = graphgraph.create("loop" + std::to_string(i), false, false, (*part.nodes().begin())->loopType());
+    loopnode_to_partition[loop_node] = i;
+    for (auto n : part.nodes())
       node_to_loopnode[n] = loop_node;
   }
 
@@ -407,76 +412,130 @@ mergeSiblings(std::vector<Subgraph> & partitions)
   {
     for (auto loopnode : graphgraph.nodes())
     {
-      for (auto root : loop.roots())
+      for (auto n : partitions[loopnode_to_partition[loopnode]].nodes())
       {
-        for (auto dep : root->deps())
-          loopnode->needs(node_to_loopnode[dep]);
+        for (auto dep : n->deps())
+          if (node_to_loopnode[dep] != loopnode)
+            loopnode->needs(node_to_loopnode[dep]);
       }
     }
   }
 
-  // Merge algorithm
-  int merged_loops = 1;
-  while(merged_loops > 0)
+  // determine the set of potential merges.
+  std::vector<std::pair<Node *, Node *>> candidate_merges;
+  std::map<Node *, std::map<Node *, int>> merge_index;
+  for (auto loop1 : graphgraph.nodes())
   {
-    merged_loops = 0;
-    std::map<LoopCategory, std::set<Node *>> loops_by_cat;
-    for (auto loop : graphgraph.nodes())
-      loops_by_cat[loop->loopType().category].insert(loop);
-
-    // TODO: realistically - we also want to first choose to merge nodes to
-    // merge from among all loop categories that are the lowest in depth
-    // as possible
-    for (auto entry : loops_by_cat)
+    for (auto loop2 : graphgraph.nodes())
     {
-      auto cat = entry.first;
-      auto loops = entry.second;
-
-      // find the two loops with the highest position or lowest depth in the
-      // loop graph.
-      // TODO: this process must take into account whether the two loops/nodes
-      // depend on each other :-( - how to do that?
-      int depth1 = std::numeric_limits<int>::max()
-      int depth2 = std::numeric_limits<int>::max()
-      Node * loop1 = nullptr
-      Node * loop2 = nullptr
-      for (auto loop : loops)
-      {
-        if (graphgraph.mindepth(loop) < depth1)
-        {
-          depth2 = depth1;
-          loop2 = loop1;
-          depth1 = graphgraph.mindepth(loop);
-          loop1 = loop;
-        } else if (graphgraph.mindepth(loop) < depth2)
-        {
-          depth2 = graphgraph.mindepth(loop);
-          loop2 = loop;
-        }
-      }
-
+      if (loop1 == loop2)
+        continue;
       if (loop1->isDepender(loop2) || loop2->isDepender(loop1))
         continue;
+      if (loop1->loopType().category != loop2->loopType().category)
+        continue;
 
-      // and merge them together.
-      merged_loops++;
-      auto merged = graphgraph.create(loop1->name(), false, false, loop1->loopType());
-      merged->needs(loop1->deps());
-      merged->needs(loop2->deps());
-      graphgraph.remove(loop1);
-      graphgraph.remove(loop2);
-      auto loop1_ids = loopnode_to_partitions[loop1];
-      auto loop2_ids = loopnode_to_partitions[loop2];
-      loopnode_to_partitions.erase(loop1);
-      loopnode_to_partitions.erase(loop2);
-      loopnode_to_partitions[merged].insert(loop1_ids.begin(), loop1_ids.end());
-      loopnode_to_partitions[merged].insert(loop2_ids.begin(), loop2_ids.end());
-      break;
+      if (merge_index.count(loop1) > 0)
+        if (merge_index[loop1].count(loop2) > 0)
+          continue;
+
+      merge_index[loop1][loop2] = candidate_merges.size();
+      merge_index[loop2][loop1] = candidate_merges.size();
+      candidate_merges.emplace_back(loop1, loop2);
     }
+  }
+
+  // determine how many merges each given merge prevents/cancells from being
+  // able to occur.
+  std::vector<std::vector<int>> cancellations(candidate_merges.size());
+  for (int i = 0; i < candidate_merges.size(); i++)
+  {
+    auto & candidate = candidate_merges[i];
+    auto loop1 = candidate.first;
+    auto loop2 = candidate.second;
+
+    for (int j = 0; j < candidate_merges.size(); j++)
+    {
+      if (i == j)
+        continue;
+
+      auto other1 = candidate_merges[j].first;
+      auto other2 = candidate_merges[j].second;
+
+      // swap other1 and other 2 nodes so they match up with loop1/loop2 nodes
+      if (loop1->isDepender(other2) || other2->isDepender(loop1) || loop1 == other2)
+      {
+        auto tmp = other1;
+        other1 = other2;
+        other2 = tmp;
+      }
+
+      if (loop1->isDepender(other1) && other2->isDepender(loop2))
+        cancellations[i].push_back(j);
+      else if (other1->isDepender(loop1) && loop2->isDepender(other2))
+        cancellations[i].push_back(j);
+      else if (loop1 == other1 && (loop2->isDepender(other2) || other2->isDepender(loop2)))
+        cancellations[i].push_back(j);
+      else if (loop2 == other2 && (loop1->isDepender(other1) || other1->isDepender(loop1)))
+        cancellations[i].push_back(j);
+    }
+  }
+
+  // sort the merges by fewest to most cancellations;
+  std::vector<int> indices(candidate_merges.size());
+  for (int i = 0; i < indices.size(); i++)
+    indices[i] = i;
+  std::sort(indices.begin(), indices.end(), [&](int a, int b) {return cancellations[a].size() < cancellations[b].size();});
+
+  std::vector<std::pair<Node *, Node *>> sorted_merges(indices.size());
+  std::vector<std::vector<int>> sorted_cancellations(indices.size());
+  for (int i = 0; i < indices.size(); i++)
+  {
+    int index = indices[i];
+    sorted_merges[i] = candidate_merges[index];
+    sorted_cancellations[i] = cancellations[index];
+  }
+
+  // choose which merges to perform
+  std::set<int> canceled_merges;
+  std::set<int> chosen_merges;
+  for (int i = 0; i < sorted_merges.size(); i++)
+  {
+    if (canceled_merges.count(i) > 0)
+      continue;
+
+    auto & merge = sorted_merges[i];
+    auto num_cancel = sorted_cancellations[i].size();
+    chosen_merges.insert(i);
+    for (auto cancel : sorted_cancellations[i])
+      canceled_merges.insert(cancel);
   }
 
   // TODO: map the merged graph back into an updated set of new partitions
   // with all the (non-meta) actual objects as nodes.
+  std::vector<Subgraph *> merged_partitions(partitions.size());
+  for (int i = 0; i < partitions.size(); i++)
+    merged_partitions[i] = &partitions[i];
+  for (auto merge_index : chosen_merges)
+  {
+    auto & merge = sorted_merges[merge_index];
+    auto loop1 = merge.first;
+    auto loop2 = merge.second;
+    auto part1_index = loopnode_to_partition[loop1];
+    auto part2_index = loopnode_to_partition[loop2];
+
+    // check if a previous mergers already caused these two original partitions to become merged
+    if (merged_partitions[part1_index] == merged_partitions[part2_index])
+      continue;
+
+    merged_partitions[part1_index]->merge(*merged_partitions[part2_index]);
+    merged_partitions[part2_index]->clear();
+    merged_partitions[part2_index] = merged_partitions[part1_index];
+  }
+
+  for (auto it = partitions.begin(); it != partitions.end(); ++it)
+    if (it->nodes().size() == 0)
+      partitions.erase(it);
 }
 
 std::vector<std::vector<std::vector<Node *>>>
