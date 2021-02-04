@@ -74,6 +74,7 @@ enum class LoopCategory
 class LoopType
 {
 public:
+  LoopType(int blk) : block(blk), category(LoopCategory::Elemental_onElem) {}
   LoopType(LoopCategory cat = LoopCategory::Elemental_onElem, int blk = 0) : block(blk), category(cat) {}
   bool operator==(const LoopType & other)
   {
@@ -538,10 +539,10 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       partitions.erase(it);
 }
 
-std::vector<std::vector<std::vector<Node *>>>
-computeLoops(Graph & g, std::vector<Subgraph> & partitions)
+std::vector<Subgraph>
+computePartitions(Graph & g, bool merge = false)
 {
-  std::vector<std::vector<std::vector<Node *>>> loops;
+  std::vector<Subgraph> partitions;
 
   int maxloop = 0;
   // start at all the leaf nodes - i.e. nodes that have "no" dependencies -
@@ -555,6 +556,9 @@ computeLoops(Graph & g, std::vector<Subgraph> & partitions)
       maxloop = n->loop();
 
   // This adds all nodes of a given loop number to a particular loop subgraph.
+  // TODO: I need a way to further split each of these loop graphs into
+  // unconnected subgraphs - this will facilitate better merging/optimization
+  // later.
   std::vector<Subgraph> loopgraphs(maxloop + 1);
   for (auto n : g.nodes())
     loopgraphs[n->loop()].add(n);
@@ -586,14 +590,24 @@ computeLoops(Graph & g, std::vector<Subgraph> & partitions)
         floodUp(n, g, n->loopType(), n->loop());
     }
 
-    // topological sort the nodes for each loop
     for (auto & entry : subgraphs)
-    {
-      auto & g = entry.second;
-      partitions.push_back(g);
-      loops.push_back({});
-      execOrder(g, loops.back());
-    }
+      partitions.push_back(entry.second);
+  }
+
+  if (merge)
+    mergeSiblings(partitions);
+  return partitions;
+}
+
+std::vector<std::vector<std::vector<Node *>>>
+computeLoops(std::vector<Subgraph> & partitions)
+{
+  std::vector<std::vector<std::vector<Node *>>> loops;
+  // topological sort the nodes for each loop
+  for (auto & g : partitions)
+  {
+    loops.push_back({});
+    execOrder(g, loops.back());
   }
   std::reverse(loops.begin(), loops.end());
   return loops;

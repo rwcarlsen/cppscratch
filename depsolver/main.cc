@@ -22,8 +22,8 @@ case1b()
   e->needs(b);
   f->needs(e);
 
-  std::vector<Subgraph> partitions;
-  auto loops = computeLoops(graph, partitions);
+  auto partitions = computePartitions(graph);
+  auto loops = computeLoops(partitions);
   //printLoops(loops);
   std::cout << dotGraph(graph);
 }
@@ -39,8 +39,8 @@ case1()
   a->needs(b, c, d);
   b->needs(c);
 
-  std::vector<Subgraph> partitions;
-  auto loops = computeLoops(graph, partitions);
+  auto partitions = computePartitions(graph);
+  auto loops = computeLoops(partitions);
   printLoops(loops);
   std::cout << dotGraph(graph);
 }
@@ -66,8 +66,8 @@ case2()
   e->needs(d);
   d->needs(c, b);
 
-  std::vector<Subgraph> partitions;
-  auto loops = computeLoops(graph, partitions);
+  auto partitions = computePartitions(graph);
+  auto loops = computeLoops(partitions);
   //printLoops(loops);
   std::cout << dotGraph(graph);
 }
@@ -93,10 +93,102 @@ case3()
   e->needs(d);
   d->needs(c, b);
 
-  std::vector<Subgraph> partitions;
-  auto loops = computeLoops(graph, partitions);
+  auto partitions = computePartitions(graph);
+  auto loops = computeLoops(partitions);
   printLoops(loops);
   std::cout << dotGraphMerged(partitions);
+}
+
+// test the case where we have separate mesh loops that can be merged together
+// all Elemental reducing nodes.
+void
+case4()
+{
+  //   a
+  //   |\
+  //   | \
+  //   b  e
+  //   |  |
+  //   |  |
+  //   c  f
+  //   |  |
+  //   |  |
+  //   d  g
+  Graph graph;
+  auto a = graph.create("a", true, true, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", true, true, LoopType());
+  auto d = graph.create("d", true, true, LoopType());
+  auto e = graph.create("e", true, true, LoopType());
+  auto f = graph.create("f", true, true, LoopType());
+  auto g = graph.create("g", true, true, LoopType());
+
+  g->needs(f);
+  f->needs(e);
+  e->needs(a);
+  d->needs(c);
+  c->needs(b);
+  b->needs(a);
+
+  auto partitions = computePartitions(graph);
+  auto loops = computeLoops(partitions);
+  printLoops(loops);
+}
+
+// test the case where we have separate mesh loops that can be merged together
+// all Elemental reducing nodes except e and d are nodal reducing
+void
+case5()
+{
+  //   a
+  //   |\
+  //   | \
+  //   b  e
+  //   |  |
+  //   |  |
+  //   c  f
+  //   |  |
+  //   |  |
+  //   d  g
+  Graph graph;
+  auto a = graph.create("a", true, true, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", true, true, LoopType());
+  auto d = graph.create("d", true, true, LoopType(LoopCategory::Nodal));
+  auto e = graph.create("e", true, true, LoopType(LoopCategory::Nodal));
+  auto f = graph.create("f", true, true, LoopType());
+  auto g = graph.create("g", true, true, LoopType());
+
+  g->needs(f);
+  f->needs(e);
+  e->needs(a);
+  d->needs(c);
+  c->needs(b);
+  b->needs(a);
+
+  auto partitions = computePartitions(graph, true);
+  auto loops = computeLoops(partitions);
+  printLoops(loops);
+}
+void caseAutogen1()
+{
+  int n_walks = 5;
+  bool sync_blocks = true;
+  TransitionMatrix m;
+  auto start_node = buildTransitionMatrix(m);
+  buildGraph(m, start_node, n_walks, sync_blocks);
+
+  auto partitions = computePartitions(m.graph);
+  auto loops = computeLoops(partitions);
+  std::vector<Subgraph> filtered_partitions;
+  for (auto & g : partitions)
+    if (g.reachable({start_node}))
+      filtered_partitions.push_back(g);
+  mergeSiblings(filtered_partitions);
+  std::cout << dotGraphMerged(filtered_partitions);
+  //Subgraph g = m.graph.reachableFrom(start_node);
+  //std::cout << dotGraph(g);
+  //printLoops(loops);
 }
 
 int
@@ -110,24 +202,12 @@ main(int narg, char ** argv)
   //case2();
   //std::cout << "::::: CASE 3  :::::\n";
   //case3();
+  std::cout << "::::: CASE 4  :::::\n";
+  case4();
+  std::cout << "::::: CASE 5  :::::\n";
+  case5();
 
-  int n_walks = 5;
-  bool sync_blocks = true;
-  TransitionMatrix m;
-  auto start_node = buildTransitionMatrix(m);
-  buildGraph(m, start_node, n_walks, sync_blocks);
-
-  std::vector<Subgraph> partitions;
-  auto loops = computeLoops(m.graph, partitions);
-  std::vector<Subgraph> filtered_partitions;
-  for (auto & g : partitions)
-    if (g.reachable({start_node}))
-      filtered_partitions.push_back(g);
-  mergeSiblings(filtered_partitions);
-  std::cout << dotGraphMerged(filtered_partitions);
-  //Subgraph g = m.graph.reachableFrom(start_node);
-  //std::cout << dotGraph(g);
-  //printLoops(loops);
+  //caseAutogen1();
 
   return 0;
 }
