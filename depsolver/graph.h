@@ -247,6 +247,18 @@ public:
     }
     return false;
   }
+
+  // returns all nodes that depend on n transitively that are within this
+  // subgraph.
+  void transitiveDependers(Node * n, std::set<Node *> & all) const
+  {
+    for (auto d : filter(n->dependers()))
+    {
+      all.insert(d);
+      transitiveDependers(d, all);
+    }
+  }
+
   // returns a subgraph of all nodes that are reachable (depended on
   // transitively) by the given from node.
   Subgraph reachableFrom(Node * from)
@@ -276,6 +288,30 @@ public:
         leaves.insert(n);
     return leaves;
   }
+
+  virtual void leaves(Node * n, std::set<Node *> lvs) const
+  {
+    if (filter(n->dependers()).empty())
+      lvs.insert(n);
+    for (auto d : filter(n->dependers()))
+      leaves(d, lvs);
+  }
+  virtual std::set<Node *> leaves(Node * n) const
+  {
+    std::set<Node *> leaves;
+    for (auto n : _nodes)
+      if (filter(n->dependers()).empty())
+        leaves.insert(n);
+    return leaves;
+  }
+  virtual void roots(Node * n, std::set<Node *> rts) const
+  {
+    if (filter(n->deps()).empty())
+      rts.insert(n);
+    for (auto d : filter(n->deps()))
+      roots(d, rts);
+  }
+
   virtual void add(Node * n) { _nodes.insert(n); }
   virtual void remove(Node * n) { _nodes.erase(n); }
   virtual bool contains(Node * n) const { return _nodes.count(n) > 0; }
@@ -343,6 +379,8 @@ private:
 
 // this effectively implements a topological sort for the nodes in the graph g. returning a list
 // that can be executed that contains groups of nodes that can be run simultaneously.
+// Note that g is a by-value arg - because we want a copy to modify during
+// this function.
 void
 execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
 {
@@ -359,7 +397,39 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
       order.back().push_back(n);
       g.remove(n);
     }
+    if (order.back().empty())
+      order.pop_back();
   }
+}
+
+// return a graph g containing all nodes connected to n;
+void
+findConnected(const Subgraph & g, Node * n, Subgraph & connected_to_n)
+{
+  std::set<Node *> leaves;
+  std::set<Node *> roots;
+  g.leaves(n, leaves);
+  g.roots(n, roots);
+
+  int prevsize = 0;
+  while (prevsize != leaves.size() + roots.size())
+  {
+    prevsize = leaves.size() + roots.size();
+    for (auto n : roots)
+      g.leaves(n, leaves);
+    for (auto n : leaves)
+      g.roots(n, roots);
+  }
+
+  std::set<Node *> nodes;
+  for (auto r : roots)
+  {
+    nodes.insert(r);
+    g.transitiveDependers(r, nodes);
+  }
+  for (auto cn : nodes)
+    connected_to_n.add(cn);
+  connected_to_n.add(n);
 }
 
 // walk n's dependencies recursively traversing over elemental nodes and
@@ -424,7 +494,7 @@ mergeSiblings(std::vector<Subgraph> & partitions)
 
   // determine the set of potential merges.
   std::vector<std::pair<Node *, Node *>> candidate_merges;
-  std::map<Node *, std::map<Node *, int>> merge_index;
+  std::map<Node *, std::map<Node *, bool>> merge_index;
   for (auto loop1 : graphgraph.nodes())
   {
     for (auto loop2 : graphgraph.nodes())
@@ -436,17 +506,26 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       if (loop1->loopType().category != loop2->loopType().category)
         continue;
 
-      if (merge_index.count(loop1) > 0)
-        if (merge_index[loop1].count(loop2) > 0)
-          continue;
+      if (merge_index[loop1][loop2])
+        continue;
+      if (merge_index[loop2][loop1])
+        continue;
 
-      merge_index[loop1][loop2] = candidate_merges.size();
-      merge_index[loop2][loop1] = candidate_merges.size();
+      merge_index[loop1][loop2] = true;
+      merge_index[loop2][loop1] = true;
       candidate_merges.emplace_back(loop1, loop2);
+
+      std::string loop1name;
+      std::string loop2name;
+      for (auto n : partitions[loopnode_to_partition[loop1]].nodes())
+        loop1name += n->name() + ",";
+      for (auto n : partitions[loopnode_to_partition[loop2]].nodes())
+        loop2name += n->name() + ",";
+      std::cout << "found candidate merge " << loop1name << loop2name << "\n";
     }
   }
 
-  // determine how many merges each given merge prevents/cancells from being
+  // determine which other merges each given merge prevents/cancells from being
   // able to occur.
   std::vector<std::vector<int>> cancellations(candidate_merges.size());
   for (int i = 0; i < candidate_merges.size(); i++)
@@ -455,15 +534,12 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     auto loop1 = candidate.first;
     auto loop2 = candidate.second;
 
-    for (int j = 0; j < candidate_merges.size(); j++)
+    for (int j = i + 1; j < candidate_merges.size(); j++)
     {
-      if (i == j)
-        continue;
-
       auto other1 = candidate_merges[j].first;
       auto other2 = candidate_merges[j].second;
 
-      // swap other1 and other 2 nodes so they match up with loop1/loop2 nodes
+      // swap other1 and other2 nodes so they match up with loop1/loop2 nodes
       if (loop1->isDepender(other2) || other2->isDepender(loop1) || loop1 == other2)
       {
         auto tmp = other1;
@@ -471,14 +547,43 @@ mergeSiblings(std::vector<Subgraph> & partitions)
         other2 = tmp;
       }
 
+      std::string loop1name;
+      std::string loop2name;
+      std::string other1name;
+      std::string other2name;
+      for (auto n : partitions[loopnode_to_partition[loop1]].nodes())
+        loop1name += n->name() + ",";
+      for (auto n : partitions[loopnode_to_partition[loop2]].nodes())
+        loop2name += n->name() + ",";
+      for (auto n : partitions[loopnode_to_partition[other1]].nodes())
+        other1name += n->name() + ",";
+      for (auto n : partitions[loopnode_to_partition[other2]].nodes())
+        other2name += n->name() + ",";
+
       if (loop1->isDepender(other1) && other2->isDepender(loop2))
+      {
         cancellations[i].push_back(j);
+        cancellations[j].push_back(i);
+        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
+      }
       else if (other1->isDepender(loop1) && loop2->isDepender(other2))
+      {
         cancellations[i].push_back(j);
+        cancellations[j].push_back(i);
+        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
+      }
       else if (loop1 == other1 && (loop2->isDepender(other2) || other2->isDepender(loop2)))
+      {
         cancellations[i].push_back(j);
+        cancellations[j].push_back(i);
+        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
+      }
       else if (loop2 == other2 && (loop1->isDepender(other1) || other1->isDepender(loop1)))
+      {
         cancellations[i].push_back(j);
+        cancellations[j].push_back(i);
+        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
+      }
     }
   }
 
@@ -496,23 +601,47 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     sorted_merges[i] = candidate_merges[index];
     sorted_cancellations[i] = cancellations[index];
   }
+  // remap canceled merge indices using the new sorted indices:
+  for (int i = 0; i < sorted_cancellations.size(); i++)
+    for (int j = 0; j < sorted_cancellations[i].size(); j++)
+      for (int k = 0; k < indices.size(); k++)
+        if (sorted_cancellations[i][j] == indices[k])
+        {
+          sorted_cancellations[i][j] = k;
+          break;
+        }
 
   // choose which merges to perform
   std::set<int> canceled_merges;
   std::set<int> chosen_merges;
   for (int i = 0; i < sorted_merges.size(); i++)
   {
+    auto & merge = sorted_merges[i];
     if (canceled_merges.count(i) > 0)
       continue;
 
-    auto & merge = sorted_merges[i];
-    auto num_cancel = sorted_cancellations[i].size();
     chosen_merges.insert(i);
+    std::string loop1name;
+    std::string loop2name;
+    for (auto n : partitions[loopnode_to_partition[merge.first]].nodes())
+      loop1name += n->name() + ",";
+    for (auto n : partitions[loopnode_to_partition[merge.second]].nodes())
+      loop2name += n->name() + ",";
+    std::cout << "choosing merge " << loop1name << loop2name << "\n";
     for (auto cancel : sorted_cancellations[i])
+    {
       canceled_merges.insert(cancel);
+      std::string loop1name;
+      std::string loop2name;
+      for (auto n : partitions[loopnode_to_partition[sorted_merges[cancel].first]].nodes())
+        loop1name += n->name() + ",";
+      for (auto n : partitions[loopnode_to_partition[sorted_merges[cancel].second]].nodes())
+        loop2name += n->name() + ",";
+      std::cout << "    which cancels merge " << loop1name << loop2name << "\n";
+    }
   }
 
-  // TODO: map the merged graph back into an updated set of new partitions
+  // map the merges back into an updated set of new partitions
   // with all the (non-meta) actual objects as nodes.
   std::vector<Subgraph *> merged_partitions(partitions.size());
   for (int i = 0; i < partitions.size(); i++)
@@ -525,6 +654,15 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     auto part1_index = loopnode_to_partition[loop1];
     auto part2_index = loopnode_to_partition[loop2];
 
+    std::string loop1name;
+    std::string loop2name;
+    for (auto n : partitions[loopnode_to_partition[loop1]].nodes())
+      loop1name += n->name() + ",";
+    for (auto n : partitions[loopnode_to_partition[loop2]].nodes())
+      loop2name += n->name() + ",";
+    std::cout << "doing merge " << loop1name << loop2name << "\n";
+
+
     // check if a previous mergers already caused these two original partitions to become merged
     if (merged_partitions[part1_index] == merged_partitions[part2_index])
       continue;
@@ -534,9 +672,35 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     merged_partitions[part2_index] = merged_partitions[part1_index];
   }
 
-  for (auto it = partitions.begin(); it != partitions.end(); ++it)
+  for (auto it = partitions.begin(); it != partitions.end();)
     if (it->nodes().size() == 0)
-      partitions.erase(it);
+      it = partitions.erase(it);
+    else
+      ++it;
+}
+
+// takes subgraphs passed in and splits them each into all unconnected
+// subgraphs.
+std::vector<Subgraph>
+splitPartitions(std::vector<Subgraph> & partitions)
+{
+  std::vector<Subgraph> splits;
+
+  for (auto & g : partitions)
+  {
+    std::set<Node *> roots = g.roots();
+    while (roots.size() > 0)
+    {
+      Node * r = *roots.begin();
+      Subgraph split;
+      findConnected(g, r, split);
+      for (auto r : split.roots())
+        roots.erase(r);
+      splits.push_back(split);
+    }
+  }
+
+  return splits;
 }
 
 std::vector<Subgraph>
@@ -556,9 +720,6 @@ computePartitions(Graph & g, bool merge = false)
       maxloop = n->loop();
 
   // This adds all nodes of a given loop number to a particular loop subgraph.
-  // TODO: I need a way to further split each of these loop graphs into
-  // unconnected subgraphs - this will facilitate better merging/optimization
-  // later.
   std::vector<Subgraph> loopgraphs(maxloop + 1);
   for (auto n : g.nodes())
     loopgraphs[n->loop()].add(n);
@@ -575,24 +736,29 @@ computePartitions(Graph & g, bool merge = false)
       subgraphs[n->loopType()].add(n);
     }
 
-    // add/pull in uncached dependencies transitively for each loop type.
-    // This is necessary, because initially each node is assigned only a
-    // single loop-number/subgraph.  So we need to duplicate (uncached) nodes
-    // that are depended on by nodes in different loops into each of those
-    // loops (i.e. material properties).  Cached dependencies do not need to
-    // be duplicated since nodes are initially assigned to the highest loop
-    // number (ie. deepest/earliest loop) they are needed in.
-
-    for (auto & entry : subgraphs)
-    {
-      auto & g = entry.second;
-      for (auto n : g.leaves())
-        floodUp(n, g, n->loopType(), n->loop());
-    }
 
     for (auto & entry : subgraphs)
       partitions.push_back(entry.second);
   }
+
+  // We need further split each of these loops/partitions into
+  // unconnected subgraphs - this will facilitate better merging/optimization
+  // later.  This splitting needs to occur *before* we floodUp -
+  // otherwise some of those pulled-in (uncached) dependencies may make
+  // previously unconnected portions of the graph look connected - when in
+  // reality, we want them to be split (and hence look unconnected).
+  partitions = splitPartitions(partitions);
+
+  // add/pull in uncached dependencies transitively for each loop type.
+  // This is necessary, because initially each node is assigned only a
+  // single loop-number/subgraph.  So we need to duplicate (uncached) nodes
+  // that are depended on by nodes in different loops into each of those
+  // loops (i.e. material properties).  Cached dependencies do not need to
+  // be duplicated since nodes are initially assigned to the highest loop
+  // number (ie. deepest/earliest loop) they are needed in.
+  for (auto & g : partitions)
+    for (auto n : g.leaves())
+      floodUp(n, g, n->loopType(), n->loop());
 
   if (merge)
     mergeSiblings(partitions);

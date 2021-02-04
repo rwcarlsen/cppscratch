@@ -130,7 +130,7 @@ case4()
   c->needs(b);
   b->needs(a);
 
-  auto partitions = computePartitions(graph);
+  auto partitions = computePartitions(graph, true);
   auto loops = computeLoops(partitions);
   printLoops(loops);
 }
