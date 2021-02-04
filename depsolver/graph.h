@@ -514,14 +514,6 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       merge_index[loop1][loop2] = true;
       merge_index[loop2][loop1] = true;
       candidate_merges.emplace_back(loop1, loop2);
-
-      std::string loop1name;
-      std::string loop2name;
-      for (auto n : partitions[loopnode_to_partition[loop1]].nodes())
-        loop1name += n->name() + ",";
-      for (auto n : partitions[loopnode_to_partition[loop2]].nodes())
-        loop2name += n->name() + ",";
-      std::cout << "found candidate merge " << loop1name << loop2name << "\n";
     }
   }
 
@@ -564,25 +556,21 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       {
         cancellations[i].push_back(j);
         cancellations[j].push_back(i);
-        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
       }
       else if (other1->isDepender(loop1) && loop2->isDepender(other2))
       {
         cancellations[i].push_back(j);
         cancellations[j].push_back(i);
-        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
       }
       else if (loop1 == other1 && (loop2->isDepender(other2) || other2->isDepender(loop2)))
       {
         cancellations[i].push_back(j);
         cancellations[j].push_back(i);
-        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
       }
       else if (loop2 == other2 && (loop1->isDepender(other1) || other1->isDepender(loop1)))
       {
         cancellations[i].push_back(j);
         cancellations[j].push_back(i);
-        std::cout << "incompatible merges: " << loop1name << loop2name << " and " << other1name << other2name << "\n";
       }
     }
   }
@@ -621,24 +609,8 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       continue;
 
     chosen_merges.insert(i);
-    std::string loop1name;
-    std::string loop2name;
-    for (auto n : partitions[loopnode_to_partition[merge.first]].nodes())
-      loop1name += n->name() + ",";
-    for (auto n : partitions[loopnode_to_partition[merge.second]].nodes())
-      loop2name += n->name() + ",";
-    std::cout << "choosing merge " << loop1name << loop2name << "\n";
     for (auto cancel : sorted_cancellations[i])
-    {
       canceled_merges.insert(cancel);
-      std::string loop1name;
-      std::string loop2name;
-      for (auto n : partitions[loopnode_to_partition[sorted_merges[cancel].first]].nodes())
-        loop1name += n->name() + ",";
-      for (auto n : partitions[loopnode_to_partition[sorted_merges[cancel].second]].nodes())
-        loop2name += n->name() + ",";
-      std::cout << "    which cancels merge " << loop1name << loop2name << "\n";
-    }
   }
 
   // map the merges back into an updated set of new partitions
@@ -653,15 +625,6 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     auto loop2 = merge.second;
     auto part1_index = loopnode_to_partition[loop1];
     auto part2_index = loopnode_to_partition[loop2];
-
-    std::string loop1name;
-    std::string loop2name;
-    for (auto n : partitions[loopnode_to_partition[loop1]].nodes())
-      loop1name += n->name() + ",";
-    for (auto n : partitions[loopnode_to_partition[loop2]].nodes())
-      loop2name += n->name() + ",";
-    std::cout << "doing merge " << loop1name << loop2name << "\n";
-
 
     // check if a previous mergers already caused these two original partitions to become merged
     if (merged_partitions[part1_index] == merged_partitions[part2_index])
