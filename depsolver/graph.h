@@ -451,17 +451,20 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
     floodUp(dep, g, t, curr_loop);
 }
 
-// TODO: once we have the graph split into partitions, there are some
+// once we have the graph split into partitions, there are some
 // optimizations that can be performed to combine partitions/loops together
-// that don't depend on each other.  The algorithm will need to:
+// that don't depend on each other.  This algorithm looks at each potential
+// merging of two loops/partitions and then calculates which other of the
+// candidate mergers are incompatible with it.  The potential merges are then
+// sorted by the number of other merges they cancel.  Then we carefully choose
+// merges to perform one at a time starting with the ones that cancel the
+// fewest other merges - removing the cancelled/incompatible ones
+// from the available merge set as we go - until there are not candidate
+// merges lest that haven't been already selected or cancelled.
 //
-// * look at every combination of loop/partition pairs
-//
-// * determine if the two partitions are siblings - this means that neither is
-//   a dependency of the other and neither depends on the other.
-//
-// * if they are siblings and have the same loop type, then they can be
-//   merged
+// I think if the passed in partitions are ordered appropriately to account
+// dor dependencies then the modified/merged partitions should also be in an
+// executable order.
 void
 mergeSiblings(std::vector<Subgraph> & partitions)
 {
@@ -539,19 +542,6 @@ mergeSiblings(std::vector<Subgraph> & partitions)
         other2 = tmp;
       }
 
-      std::string loop1name;
-      std::string loop2name;
-      std::string other1name;
-      std::string other2name;
-      for (auto n : partitions[loopnode_to_partition[loop1]].nodes())
-        loop1name += n->name() + ",";
-      for (auto n : partitions[loopnode_to_partition[loop2]].nodes())
-        loop2name += n->name() + ",";
-      for (auto n : partitions[loopnode_to_partition[other1]].nodes())
-        other1name += n->name() + ",";
-      for (auto n : partitions[loopnode_to_partition[other2]].nodes())
-        other2name += n->name() + ",";
-
       if (loop1->isDepender(other1) && other2->isDepender(loop2))
       {
         cancellations[i].push_back(j);
@@ -626,13 +616,28 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     auto part1_index = loopnode_to_partition[loop1];
     auto part2_index = loopnode_to_partition[loop2];
 
-    // check if a previous mergers already caused these two original partitions to become merged
+    // check if previous mergers already caused these two original partitions to become merged
     if (merged_partitions[part1_index] == merged_partitions[part2_index])
       continue;
 
     merged_partitions[part1_index]->merge(*merged_partitions[part2_index]);
-    merged_partitions[part2_index]->clear();
-    merged_partitions[part2_index] = merged_partitions[part1_index];
+
+    // when two partitions are merged, we need to set the subgraph pointer in both
+    // original partitions point to the same subghraph.  Then further merges that
+    // may be with already merged partitions can also be placed into the same
+    // already-merged subrgraph.  As merges accumulate, we need to keep all
+    // these original-partition subgraph entries pointing to the correct
+    // single, merged subgraph.
+    for (int i = 0; i < merged_partitions.size(); i++)
+    {
+      if (i == part1_index)
+        continue;
+      if (merged_partitions[i] == merged_partitions[part1_index] || merged_partitions[i] == merged_partitions[part2_index])
+      {
+        merged_partitions[i]->clear();
+        merged_partitions[i] = merged_partitions[part1_index];
+      }
+    }
   }
 
   for (auto it = partitions.begin(); it != partitions.end();)

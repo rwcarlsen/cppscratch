@@ -170,6 +170,39 @@ case5()
   auto loops = computeLoops(partitions);
   printLoops(loops);
 }
+void
+case6()
+{
+  //   a
+  //   |\
+  //   | \
+  //   b  e
+  //   |  |
+  //   |  |
+  //   c  f
+  //   |  |
+  //   |  |
+  //   d  g
+  Graph graph;
+  auto a = graph.create("a", true, true, LoopType());
+  auto b = graph.create("b", true, true, LoopType(LoopCategory::Nodal));
+  auto c = graph.create("c", true, true, LoopType());
+  auto d = graph.create("d", true, true, LoopType());
+  auto e = graph.create("e", true, true, LoopType());
+  auto f = graph.create("f", true, true, LoopType());
+  auto g = graph.create("g", true, true, LoopType(LoopCategory::Nodal));
+
+  g->needs(f);
+  f->needs(e);
+  e->needs(a);
+  d->needs(c);
+  c->needs(b);
+  b->needs(a);
+
+  auto partitions = computePartitions(graph, true);
+  auto loops = computeLoops(partitions);
+  printLoops(loops);
+}
 void caseAutogen1()
 {
   int n_walks = 5;
@@ -206,6 +239,8 @@ main(int narg, char ** argv)
   case4();
   std::cout << "::::: CASE 5  :::::\n";
   case5();
+  std::cout << "::::: CASE 6  :::::\n";
+  case6();
 
   //caseAutogen1();
 
