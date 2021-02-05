@@ -604,7 +604,12 @@ mergeSiblings(std::vector<Subgraph> & partitions)
   }
 
   // map the merges back into an updated set of new partitions
-  // with all the (non-meta) actual objects as nodes.
+  // with all the (non-meta) actual objects as nodes.  To do this, we create a
+  // parallel set of pointers to the original partitions that we modify/use to
+  // make sure consecutive merges of partitions pairs accumulate correctly
+  // into single subgraphs - i.e. merging partition 1 and 2 and then later
+  // merging partitions 2 and 3 results in a single subgraph representing all
+  // nodes for partitions 1, 2, and 3.
   std::vector<Subgraph *> merged_partitions(partitions.size());
   for (int i = 0; i < partitions.size(); i++)
     merged_partitions[i] = &partitions[i];
@@ -616,11 +621,10 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     auto part1_index = loopnode_to_partition[loop1];
     auto part2_index = loopnode_to_partition[loop2];
 
-    // check if previous mergers already caused these two original partitions to become merged
-    if (merged_partitions[part1_index] == merged_partitions[part2_index])
-      continue;
-
-    merged_partitions[part1_index]->merge(*merged_partitions[part2_index]);
+    // check if previous mergers already caused these two original partitions to become merged;
+    // only merge if this wasn't the case.
+    if (merged_partitions[part1_index] != merged_partitions[part2_index])
+      merged_partitions[part1_index]->merge(*merged_partitions[part2_index]);
 
     // when two partitions are merged, we need to set the subgraph pointer in both
     // original partitions point to the same subghraph.  Then further merges that
@@ -630,16 +634,25 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     // single, merged subgraph.
     for (int i = 0; i < merged_partitions.size(); i++)
     {
+      // check if prior merges resulted in the current two partitions already being merged.
+      // In this case. we don't want to clear out any subgraphs - if we did
+      // then we could end up the nodes in the merged partitions being deleted!
+      if (merged_partitions[part1_index] == merged_partitions[part2_index])
+        break;
       if (i == part1_index)
         continue;
-      if (merged_partitions[i] == merged_partitions[part1_index] || merged_partitions[i] == merged_partitions[part2_index])
+      if (merged_partitions[i] == merged_partitions[part2_index])
       {
+        // clear out the partition we merged "from" so that it has zero nodes
+        // and we know to remove it from our main partition list/vector once
+        // we are done merging.
         merged_partitions[i]->clear();
         merged_partitions[i] = merged_partitions[part1_index];
       }
     }
   }
 
+  // remove the empty partitions that we merged away into other partitions.
   for (auto it = partitions.begin(); it != partitions.end();)
     if (it->nodes().size() == 0)
       it = partitions.erase(it);

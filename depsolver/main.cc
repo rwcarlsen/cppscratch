@@ -136,9 +136,13 @@ case4()
 }
 
 // test the case where we have separate mesh loops that can be merged together
-// all Elemental reducing nodes except e and d are nodal reducing
+// all Elemental reducing nodes except e and d are nodal reducing.  This is
+// specifically checking that we detect the correct, "optimized" merges to do
+// - where we don't want to merge e and d - because that would prevent us from
+// doing two other merges (b,f and c,g) - resulting in more total
+// loops/partitions.
 void
-case5()
+case5a()
 {
   //   a
   //   |\
@@ -170,8 +174,10 @@ case5()
   auto loops = computeLoops(partitions);
   printLoops(loops);
 }
+
+// same as 5a but b and g are nodal instead of e and d.
 void
-case6()
+case5b()
 {
   //   a
   //   |\
@@ -198,6 +204,34 @@ case6()
   d->needs(c);
   c->needs(b);
   b->needs(a);
+
+  auto partitions = computePartitions(graph, true);
+  auto loops = computeLoops(partitions);
+  printLoops(loops);
+}
+
+// everything depends on a.  This makes sure that multiple merge-pairs into
+// a single, accumulating subgraph are all consolidated/merged correctly.
+void
+case6()
+{
+  //    b----a-----f
+  //        /|\
+  //       / | \
+  //      c  d  e
+  Graph graph;
+  auto a = graph.create("a", true, true, LoopType());
+  auto b = graph.create("b", true, true, LoopType());
+  auto c = graph.create("c", true, true, LoopType());
+  auto d = graph.create("d", true, true, LoopType());
+  auto e = graph.create("e", true, true, LoopType());
+  auto f = graph.create("f", true, true, LoopType());
+
+  b->needs(a);
+  c->needs(a);
+  d->needs(a);
+  e->needs(a);
+  f->needs(a);
 
   auto partitions = computePartitions(graph, true);
   auto loops = computeLoops(partitions);
@@ -237,8 +271,10 @@ main(int narg, char ** argv)
   //case3();
   std::cout << "::::: CASE 4  :::::\n";
   case4();
-  std::cout << "::::: CASE 5  :::::\n";
-  case5();
+  std::cout << "::::: CASE 5a  :::::\n";
+  case5a();
+  std::cout << "::::: CASE 5b  :::::\n";
+  case5b();
   std::cout << "::::: CASE 6  :::::\n";
   case6();
 
