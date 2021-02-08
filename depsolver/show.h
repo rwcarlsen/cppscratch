@@ -126,6 +126,11 @@ dotGraph(const Subgraph & g)
   return ss.str();
 }
 
+// Note that the loop labeling may be partially wrong/incomplete for cases
+// where we merged similar loop categories together - e.g. when merging nodes
+// from Elemental_onElem and Elemental_onBoundary together into a single loop,
+// the loop type printed by this function will arbitrarily be one of those
+// two.
 void
 printLoops(std::vector<std::vector<std::vector<Node *>>> loops)
 {

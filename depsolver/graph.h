@@ -160,10 +160,10 @@ public:
   }
   void transitiveDependers(std::set<Node *> & all) const
   {
-    for (auto n : _dependers)
+    for (auto d : _dependers)
     {
-      all.insert(n);
-      n->transitiveDependers(all);
+      all.insert(d);
+      d->transitiveDependers(all);
     }
   }
 
@@ -181,6 +181,7 @@ public:
   template <typename... Args>
   void needs(Node * n, Args... args)
   {
+    assert(n != this); // cyclical dep check - node can't depend on itself.
     _deps.insert(n);
     n->_dependers.insert(this);
     needs(args...);
@@ -259,6 +260,17 @@ public:
     }
   }
 
+  // returns all nodes that n depends on transitively that are within this
+  // subgraph.
+  void transitiveDeps(Node * n, std::set<Node *> & all) const
+  {
+    for (auto d : filter(n->deps()))
+    {
+      all.insert(d);
+      transitiveDeps(d, all);
+    }
+  }
+
   // returns a subgraph of all nodes that are reachable (depended on
   // transitively) by the given from node.
   Subgraph reachableFrom(Node * from)
@@ -288,28 +300,19 @@ public:
         leaves.insert(n);
     return leaves;
   }
-
-  virtual void leaves(Node * n, std::set<Node *> lvs) const
-  {
-    if (filter(n->dependers()).empty())
-      lvs.insert(n);
-    for (auto d : filter(n->dependers()))
-      leaves(d, lvs);
-  }
-  virtual std::set<Node *> leaves(Node * n) const
-  {
-    std::set<Node *> leaves;
-    for (auto n : _nodes)
-      if (filter(n->dependers()).empty())
-        leaves.insert(n);
-    return leaves;
-  }
   virtual void roots(Node * n, std::set<Node *> rts) const
   {
     if (filter(n->deps()).empty())
       rts.insert(n);
     for (auto d : filter(n->deps()))
       roots(d, rts);
+  }
+  virtual void leaves(Node * n, std::set<Node *> lvs) const
+  {
+    if (filter(n->dependers()).empty())
+      lvs.insert(n);
+    for (auto d : filter(n->dependers()))
+      leaves(d, lvs);
   }
 
   virtual void add(Node * n) { _nodes.insert(n); }
@@ -402,34 +405,18 @@ execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
   }
 }
 
-// return a graph g containing all nodes connected to n;
+// return a subgraph of g containing all nodes connected to n;
 void
-findConnected(const Subgraph & g, Node * n, Subgraph & connected_to_n)
+findConnected(const Subgraph & g, Node * n, Subgraph & all)
 {
-  std::set<Node *> leaves;
-  std::set<Node *> roots;
-  g.leaves(n, leaves);
-  g.roots(n, roots);
+  if (all.contains(n) || !g.contains(n))
+    return;
 
-  int prevsize = 0;
-  while (prevsize != leaves.size() + roots.size())
-  {
-    prevsize = leaves.size() + roots.size();
-    for (auto n : roots)
-      g.leaves(n, leaves);
-    for (auto n : leaves)
-      g.roots(n, roots);
-  }
-
-  std::set<Node *> nodes;
-  for (auto r : roots)
-  {
-    nodes.insert(r);
-    g.transitiveDependers(r, nodes);
-  }
-  for (auto cn : nodes)
-    connected_to_n.add(cn);
-  connected_to_n.add(n);
+  all.add(n);
+  for (auto d : n->deps())
+    findConnected(g, d, all);
+  for (auto d : n->dependers())
+    findConnected(g, d, all);
 }
 
 // walk n's dependencies recursively traversing over elemental nodes and
@@ -468,9 +455,11 @@ bool canMerge(Node * a, Node * b)
 
   if (a == b)
     return false;
+  if (mergeable[a->loopType().category].count(b->loopType().category) == 0)
+    return false;
   if (a->isDepender(b) || b->isDepender(a))
     return false;
-  return mergeable[a->loopType().category].count(b->loopType().category) > 0;
+  return true;
 }
 
 // once we have the graph split into partitions, there are some
@@ -498,24 +487,27 @@ mergeSiblings(std::vector<Subgraph> & partitions)
   {
     auto & part = partitions[i];
     auto loop_node = graphgraph.create("loop" + std::to_string(i), false, false, (*part.nodes().begin())->loopType());
+    assert(loop_node != nullptr);
     loopnode_to_partition[loop_node] = i;
     for (auto n : part.nodes())
       node_to_loopnode[n] = loop_node;
   }
 
   // construct all inter-partition dependencies
-  for (int i = 0; i < graphgraph.nodes().size(); i++)
-  {
-    for (auto loopnode : graphgraph.nodes())
-    {
-      for (auto n : partitions[loopnode_to_partition[loopnode]].nodes())
+  for (auto & partition : partitions)
+    for (auto node : partition.nodes())
+      for (auto dep : node->deps())
       {
-        for (auto dep : n->deps())
-          if (node_to_loopnode[dep] != loopnode)
-            loopnode->needs(node_to_loopnode[dep]);
+        if (node_to_loopnode[dep] == node_to_loopnode[node])
+          continue;
+        assert(dep != nullptr);
+        assert(node != nullptr);
+        assert(node_to_loopnode.count(node) > 0);
+        assert(node_to_loopnode.count(dep) > 0);
+        assert(node_to_loopnode[node] != nullptr);
+        assert(node_to_loopnode[dep] != nullptr);
+        node_to_loopnode[node]->needs(node_to_loopnode[dep]);
       }
-    }
-  }
 
   // determine the set of potential merges.
   std::vector<std::pair<Node *, Node *>> candidate_merges;
@@ -701,6 +693,24 @@ splitPartitions(std::vector<Subgraph> & partitions)
     }
   }
 
+  // This was an alternative approach where we just dup/split out every root and its
+  // deps as a separate subgraph.  I don't think this works well for
+  // larger-scale optimization - we end up splitting graphs into pieces that
+  // otherwise share dependencies and so this would cause redundant/duplicate
+  // calculations to be performed
+  //for (auto & g : partitions)
+  //{
+  //  for (auto lv : g.leaves())
+  //  {
+  //    Subgraph split;
+  //    std::set<Node *> tdeps = {lv};
+  //    g.transitiveDeps(lv, tdeps);
+  //    for (auto n : tdeps)
+  //      split.add(n);
+  //    splits.push_back(split);
+  //  }
+  //}
+
   return splits;
 }
 
@@ -742,14 +752,6 @@ computePartitions(Graph & g, bool merge = false)
       partitions.push_back(entry.second);
   }
 
-  // We need further split each of these loops/partitions into
-  // unconnected subgraphs - this will facilitate better merging/optimization
-  // later.  This splitting needs to occur *before* we floodUp -
-  // otherwise some of those pulled-in (uncached) dependencies may make
-  // previously unconnected portions of the graph look connected - when in
-  // reality, we want them to be split (and hence look unconnected).
-  partitions = splitPartitions(partitions);
-
   // add/pull in uncached dependencies transitively for each loop type.
   // This is necessary, because initially each node is assigned only a
   // single loop-number/subgraph.  So we need to duplicate (uncached) nodes
@@ -760,6 +762,41 @@ computePartitions(Graph & g, bool merge = false)
   for (auto & g : partitions)
     for (auto n : g.leaves())
       floodUp(n, g, n->loopType(), n->loop());
+
+  // TODO: decide which way:
+  //
+  // We need further split each of these loops/partitions into
+  // unconnected subgraphs - this will facilitate better merging/optimization
+  // later.  This splitting needs to occur *before* we floodUp -
+  // otherwise some of those pulled-in (uncached) dependencies may make
+  // previously unconnected portions of the graph look connected - when in
+  // reality, we want them to be split (and hence look unconnected).
+  //
+  // Or maybe it is better to floodup first - because unconnected subgraphs
+  // that become connected - that means they share nodes - which can reduce
+  // calculations if they stay unsplit/together.
+  partitions = splitPartitions(partitions);
+
+  // make sure there aren't any dependency nodes that aren't included in at
+  // least one partition
+  assert([&](){
+        std::set<Node *> all_deps;
+        std::set<Node *> all_nodes;
+        for (auto & g : partitions)
+        {
+          for (auto n : g.nodes())
+          {
+            all_nodes.insert(n);
+            for (auto d : n->deps())
+              all_deps.insert(d);
+          }
+        }
+
+        for (auto d : all_deps)
+          if (all_nodes.count(d) == 0)
+            return false;
+        return true;
+      }());
 
   if (merge)
     mergeSiblings(partitions);

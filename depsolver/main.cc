@@ -141,19 +141,20 @@ case4()
 // - where we don't want to merge e and d - because that would prevent us from
 // doing two other merges (b,f and c,g) - resulting in more total
 // loops/partitions.
+//
+//   a
+//   |\
+//   | \
+//   b  e
+//   |  |
+//   |  |
+//   c  f
+//   |  |
+//   |  |
+//   d  g
 void
 case5a()
 {
-  //   a
-  //   |\
-  //   | \
-  //   b  e
-  //   |  |
-  //   |  |
-  //   c  f
-  //   |  |
-  //   |  |
-  //   d  g
   Graph graph;
   auto a = graph.create("a", true, true, LoopType());
   auto b = graph.create("b", true, true, LoopType());
@@ -175,20 +176,21 @@ case5a()
   printLoops(loops);
 }
 
-// same as 5a but b and g are nodal instead of e and d.
+// Same as 5a but b and g are nodal instead of e and d.
+//
+//   a
+//   |\
+//   | \
+//   b  e
+//   |  |
+//   |  |
+//   c  f
+//   |  |
+//   |  |
+//   d  g
 void
 case5b()
 {
-  //   a
-  //   |\
-  //   | \
-  //   b  e
-  //   |  |
-  //   |  |
-  //   c  f
-  //   |  |
-  //   |  |
-  //   d  g
   Graph graph;
   auto a = graph.create("a", true, true, LoopType());
   auto b = graph.create("b", true, true, LoopType(LoopCategory::Nodal));
@@ -212,13 +214,14 @@ case5b()
 
 // everything depends on a.  This makes sure that multiple merge-pairs into
 // a single, accumulating subgraph are all consolidated/merged correctly.
+//
+//    b----a-----f
+//        /|\
+//       / | \
+//      c  d  e
 void
 case6()
 {
-  //    b----a-----f
-  //        /|\
-  //       / | \
-  //      c  d  e
   Graph graph;
   auto a = graph.create("a", true, true, LoopType());
   auto b = graph.create("b", true, true, LoopType());
@@ -237,6 +240,30 @@ case6()
   auto loops = computeLoops(partitions);
   printLoops(loops);
 }
+
+// Make sure two *different* elemental loop types can be correctly merged
+// together.  All nodes are reducing, b and c are  different Element loop
+// subtypes.
+//
+//   a
+//   |\
+//   | \
+//   b  c
+void
+case7()
+{
+  Graph graph;
+  auto a = graph.create("a", true, true, LoopType());
+  auto b = graph.create("b", true, true, LoopType(LoopCategory::Elemental_onElem));
+  auto c = graph.create("c", true, true, LoopType(LoopCategory::Elemental_onBoundary));
+
+  b->needs(a);
+  c->needs(a);
+
+  auto partitions = computePartitions(graph, true);
+  auto loops = computeLoops(partitions);
+  printLoops(loops);
+}
 void caseAutogen1()
 {
   int n_walks = 5;
@@ -247,12 +274,14 @@ void caseAutogen1()
 
   auto partitions = computePartitions(m.graph);
   auto loops = computeLoops(partitions);
+  mergeSiblings(partitions);
   std::vector<Subgraph> filtered_partitions;
   for (auto & g : partitions)
     if (g.reachable({start_node}))
       filtered_partitions.push_back(g);
-  mergeSiblings(filtered_partitions);
-  std::cout << dotGraphMerged(filtered_partitions);
+
+  //std::cout << dotGraphMerged(filtered_partitions);
+
   //Subgraph g = m.graph.reachableFrom(start_node);
   //std::cout << dotGraph(g);
   //printLoops(loops);
@@ -277,8 +306,10 @@ main(int narg, char ** argv)
   case5b();
   std::cout << "::::: CASE 6  :::::\n";
   case6();
+  std::cout << "::::: CASE 7  :::::\n";
+  case7();
 
-  //caseAutogen1();
+  caseAutogen1();
 
   return 0;
 }

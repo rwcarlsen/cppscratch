@@ -230,7 +230,7 @@ walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node 
       else
         n->needs(dep);
     }
-    // we doo all the needs/dep-setting calls first at once - to ensure
+    // we do all the needs/dep-setting calls first at once - to ensure
     // breadth-first generation - this prevents weird dependency conflicts
     // relating to avoiding cyclical dependencies and depending on reducing
     // nodes.
