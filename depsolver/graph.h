@@ -38,15 +38,15 @@
 
 // Example scenario to think through:
 //
-//      KernelA -> MaterialA -> AuxVar -> AuxKernel -> VarA
-//                     |                     |
-//                     +--> MaterialB -------+-----> VarB
+//      KernelA -> MaterialA -> AuxVar -> AuxSolution ->AuxKernel -> VarA
+//                     |                                  |
+//                     +--> MaterialB -------+------------+--> VarB
 //
 // If kernelA and AuxVar are both elemental, then everything can be in the
-// same loop.  This is possible because AuxVar+AuxKernel combos are not
+// same loop.  This is possible because AuxVar+AuxSolution+AuxKernel combos are not
 // reducing/aggregation values even though they are cached.  If KernelA and
 // AuxVar are different loop types, then the must be in separate loops - this
-// is allowed/works because AuxVar is cached.
+// is allowed/works because AuxSolution is cached.
 //
 // Notable is that material objects sort of "morph" into whatever loop type
 // their dependers are.    In a face/fv loop, regular "elemental" material
@@ -451,6 +451,28 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
     floodUp(dep, g, t, curr_loop);
 }
 
+
+// returns true if loops/partitions represented by nodes a and b can be merged.
+bool canMerge(Node * a, Node * b)
+{
+  // this allows us to consider all Elemental_foo loop types mergeable
+  std::map<LoopCategory, std::set<LoopCategory>> mergeable = {
+    {LoopCategory::None, {LoopCategory::None}},
+    {LoopCategory::Nodal, {LoopCategory::Nodal}},
+    {LoopCategory::Face, {LoopCategory::Face}},
+    {LoopCategory::Elemental_onElem, {LoopCategory::Elemental_onElem, LoopCategory::Elemental_onElemFV, LoopCategory::Elemental_onBoundary, LoopCategory::Elemental_onInternalSide}},
+    {LoopCategory::Elemental_onElemFV, {LoopCategory::Elemental_onElem, LoopCategory::Elemental_onElemFV, LoopCategory::Elemental_onBoundary, LoopCategory::Elemental_onInternalSide}},
+    {LoopCategory::Elemental_onBoundary, {LoopCategory::Elemental_onElem, LoopCategory::Elemental_onElemFV, LoopCategory::Elemental_onBoundary, LoopCategory::Elemental_onInternalSide}},
+    {LoopCategory::Elemental_onInternalSide, {LoopCategory::Elemental_onElem, LoopCategory::Elemental_onElemFV, LoopCategory::Elemental_onBoundary, LoopCategory::Elemental_onInternalSide}},
+  };
+
+  if (a == b)
+    return false;
+  if (a->isDepender(b) || b->isDepender(a))
+    return false;
+  return mergeable[a->loopType().category].count(b->loopType().category) > 0;
+}
+
 // once we have the graph split into partitions, there are some
 // optimizations that can be performed to combine partitions/loops together
 // that don't depend on each other.  This algorithm looks at each potential
@@ -502,16 +524,14 @@ mergeSiblings(std::vector<Subgraph> & partitions)
   {
     for (auto loop2 : graphgraph.nodes())
     {
-      if (loop1 == loop2)
-        continue;
-      if (loop1->isDepender(loop2) || loop2->isDepender(loop1))
-        continue;
-      if (loop1->loopType().category != loop2->loopType().category)
-        continue;
-
+      // skip if an equivalent merge candidate has already been created
       if (merge_index[loop1][loop2])
         continue;
       if (merge_index[loop2][loop1])
+        continue;
+
+      // skip if the two loops are not compatible for merging.
+      if (!canMerge(loop1, loop2))
         continue;
 
       merge_index[loop1][loop2] = true;
