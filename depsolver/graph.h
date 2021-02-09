@@ -128,38 +128,6 @@ public:
   {
   }
 
-  // loop returns a loop number for this node.  Loop numbers are ascending as
-  // nodes get deeper in the dependency heirarchy. Loop number for a node is
-  // equal to the maximum loop number of all nodes that depend on this node,
-  // unless this node is reducing (i.e. aggregation) - then the loop number is
-  // one greater than the maximum loop number of all nodes that depend on this
-  // node.
-  int loop() const {
-    if (_dependers.size() == 0)
-      return 0;
-
-    auto depiter = _dependers.begin();
-    int maxloop = (*depiter)->loop();
-    for (; depiter != _dependers.end(); depiter++)
-    {
-      auto dep = *depiter;
-      // TODO: does the loop number really need to increment if the loop type
-      // changes - is this the right logic?
-      auto deploop = dep->loop();
-      if (dep->loopType() != loopType() || isReducing())
-      {
-        if (deploop + 1 > maxloop)
-          maxloop = deploop + 1;
-      }
-      else
-      {
-        if (deploop > maxloop)
-          maxloop = deploop;
-      }
-    }
-    return maxloop;
-  }
-
   std::set<Node *> deps() const { return _deps; }
   std::set<Node *> dependers() const { return _dependers; }
 
@@ -216,7 +184,57 @@ public:
     _id = id;
   }
 
+  // loop returns a loop number for this node.  Loop numbers are ascending as
+  // nodes get deeper in the dependency heirarchy. Loop number for a node is
+  // equal to the maximum loop number of all nodes that depend on this node,
+  // unless this node is reducing (i.e. aggregation) - then the loop number is
+  // one greater than the maximum loop number of all nodes that depend on this
+  // node.
+  //
+  // You *MUST* call prepare once right before calling this on a graph's nodes.
+  int loop()
+  {
+    if (_loop == -1)
+      _loop = loopInner();
+    return _loop;
+  }
+
+  // This is used to set/establish all the loop() numbers for each node.  This
+  // must be called before accessing loop number information for any node in
+  // the full graph this node is a part of.
+  void prepare();
+
 private:
+  // This is used as an optimization to mark the graph nodes as "uncomputed"
+  // right before we do expensive calculations.
+  void unvisitAll();
+
+  int loopInner() const {
+    if (_dependers.size() == 0)
+      return 0;
+
+    auto depiter = _dependers.begin();
+    int maxloop = (*depiter)->loop();
+    for (; depiter != _dependers.end(); depiter++)
+    {
+      auto dep = *depiter;
+      // TODO: does the loop number really need to increment if the loop type
+      // changes - is this the right logic?
+      auto deploop = dep->loop();
+      if (dep->loopType() != loopType() || isReducing())
+      {
+        if (deploop + 1 > maxloop)
+          maxloop = deploop + 1;
+      }
+      else
+      {
+        if (deploop > maxloop)
+          maxloop = deploop;
+      }
+    }
+    return maxloop;
+  }
+
   bool isDependerInner(Node * n)
   {
     if (_visited)
@@ -231,8 +249,7 @@ private:
     return false;
   }
 
-  void unvisitAll();
-
+  int _loop = -1;
   Graph * _owner;
   std::string _name;
   int _id = -1;
@@ -397,6 +414,14 @@ Node::unvisitAll()
   auto & store = _owner->storage();
   for (int i = 0; i < store.size(); i++)
     store[i]->_visited = false;
+}
+
+void
+Node::prepare()
+{
+  auto & store = _owner->storage();
+  for (int i = 0; i < store.size(); i++)
+    store[i]->_loop = -1;
 }
 
 // this effectively implements a topological sort for the nodes in the graph g. returning a list
@@ -736,6 +761,7 @@ splitPartitions(std::vector<Subgraph> & partitions)
 std::vector<Subgraph>
 computePartitions(Graph & g, bool merge = false)
 {
+  (*g.roots().begin())->prepare();
   std::vector<Subgraph> partitions;
 
   int maxloop = 0;
@@ -746,8 +772,11 @@ computePartitions(Graph & g, bool merge = false)
   // step or that come from the ether - i.e. solution/variable-values, cached
   // values, etc.  Find the max loop number (most deep in dep tree)
   for (auto n : g.roots())
-    if (n->loop() > maxloop)
-      maxloop = n->loop();
+  {
+    auto loop = n->loop();
+    if (loop > maxloop)
+      maxloop = loop;
+  }
 
   // This adds all nodes of a given loop number to a particular loop subgraph.
   std::vector<Subgraph> loopgraphs(maxloop + 1);
