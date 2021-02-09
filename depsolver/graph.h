@@ -121,8 +121,9 @@ class Node
 {
 public:
   Node(const std::string & name, bool cached, bool reducing, LoopType l)
-    : _name(name), _cached(cached), _reducing(reducing), _looptype(l)
+    : _name(name), _cached(cached), _reducing(reducing), _looptype(l), _my_index(_visited.size())
   {
+    _visited.push_back(false);
   }
 
   // loop returns a loop number for this node.  Loop numbers are ascending as
@@ -156,14 +157,14 @@ public:
 
   std::set<Node *> deps() const { return _deps; }
   std::set<Node *> dependers() const { return _dependers; }
-  bool isDepender(Node * n) const
+
+  // Returns if this node depends on n (directly or transitively).  reachable must
+  // contain a superset of reachable nodes from this node - this is used for
+  // optimization purposes
+  bool isDepender(Node * n)
   {
-    if (_dependers.count(n) > 0)
-      return true;
-    for (auto d : _dependers)
-      if (d->isDepender(n))
-        return true;
-    return false;
+    unvisitAll();
+    return isDependerInner(n);
   }
   void transitiveDependers(std::set<Node *> & all) const
   {
@@ -211,6 +212,25 @@ public:
   }
 
 private:
+  bool isDependerInner(Node * n)
+  {
+    if (_visited[_my_index])
+      return false;
+    _visited[_my_index] = true;
+
+    if (_dependers.count(n) > 0)
+      return true;
+    for (auto d : _dependers)
+      if (d->isDependerInner(n))
+        return true;
+    return false;
+  }
+
+  static void unvisitAll();
+  static std::vector<bool> _visited;
+
+  int _my_index;
+
   std::string _name;
   int _id = -1;
   bool _cached;
@@ -219,6 +239,15 @@ private:
   std::set<Node *> _deps;
   std::set<Node *> _dependers;
 };
+
+std::vector<bool> Node::_visited;
+
+void
+Node::unvisitAll()
+{
+  for (int i = 0; i < _visited.size(); i++)
+    _visited[i] = false;
+}
 
 class Subgraph
 {
