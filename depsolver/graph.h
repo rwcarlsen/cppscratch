@@ -145,6 +145,8 @@ public:
   {
     for (auto d : _dependers)
     {
+      if (all.count(d) > 0)
+        continue;
       all.insert(d);
       d->transitiveDependers(all);
     }
