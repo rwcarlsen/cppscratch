@@ -4,7 +4,11 @@
 #include <vector>
 #include <map>
 #include <string>
+#include <cassert>
 #include <iostream>
+#include <memory>
+#include <algorithm>
+#include <limits>
 
 // Notes/thoughts:
 //
