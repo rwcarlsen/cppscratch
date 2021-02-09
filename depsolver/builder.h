@@ -6,13 +6,6 @@
 #include <random>
 #include <algorithm>
 
-
-class Kernel : public Node
-{
-public:
-  Kernel(std::string name, LoopCategory cat, int block) : Node(name, false, false, LoopType(cat, block)) {}
-};
-
 std::string
 nodeName(const std::string base_name, int block, LoopCategory cat)
 {

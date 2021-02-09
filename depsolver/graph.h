@@ -116,14 +116,16 @@ public:
 //
 //     3.  Fix remaining dependencies on uncached nodes in another loop by
 //     duplicating these uncached nodes into every loop that needs them.
+//
+
+class Graph;
 
 class Node
 {
 public:
-  Node(const std::string & name, bool cached, bool reducing, LoopType l)
-    : _name(name), _cached(cached), _reducing(reducing), _looptype(l), _my_index(_visited.size())
+  Node(Graph * g, const std::string & name, bool cached, bool reducing, LoopType l)
+    : _owner(g), _name(name), _cached(cached), _reducing(reducing), _looptype(l), _visited(false)
   {
-    _visited.push_back(false);
   }
 
   // loop returns a loop number for this node.  Loop numbers are ascending as
@@ -214,9 +216,9 @@ public:
 private:
   bool isDependerInner(Node * n)
   {
-    if (_visited[_my_index])
+    if (_visited)
       return false;
-    _visited[_my_index] = true;
+    _visited = true;
 
     if (_dependers.count(n) > 0)
       return true;
@@ -226,11 +228,9 @@ private:
     return false;
   }
 
-  static void unvisitAll();
-  static std::vector<bool> _visited;
+  void unvisitAll();
 
-  int _my_index;
-
+  Graph * _owner;
   std::string _name;
   int _id = -1;
   bool _cached;
@@ -238,22 +238,14 @@ private:
   LoopType _looptype;
   std::set<Node *> _deps;
   std::set<Node *> _dependers;
+  bool _visited;
 };
-
-std::vector<bool> Node::_visited;
-
-void
-Node::unvisitAll()
-{
-  for (int i = 0; i < _visited.size(); i++)
-    _visited[i] = false;
-}
 
 class Subgraph
 {
 public:
-  Subgraph() {_id = _next_id++;}
-  Subgraph(const std::set<Node *> & nodes) : _nodes(nodes) {_id = _next_id++;}
+  Subgraph() {}
+  Subgraph(const std::set<Node *> & nodes) : _nodes(nodes) {}
 
   // Returns the minimum number of jumps it takes to get from any root node of
   // the dependency graph to this node.
@@ -374,12 +366,9 @@ private:
     return filtered;
   }
 
-  static int _next_id;
   int _id;
   std::set<Node *> _nodes;
 };
-
-int Subgraph::_next_id = 1;
 
 class Graph : public Subgraph
 {
@@ -387,34 +376,25 @@ public:
   template <typename... Args>
   Node * create(Args... args)
   {
-    _node_storage.emplace_back(new Node(std::forward<Args>(args)...));
+    _node_storage.emplace_back(new Node(this, std::forward<Args>(args)...));
     _node_storage.back()->setId(_node_storage.size() - 1);
     add(_node_storage.back().get());
     return _node_storage.back().get();
   }
 
-  Graph clone()
-  {
-    Graph copy;
-    // make a copy of all the nodes
-    for (auto & n : _node_storage)
-      copy._node_storage.emplace_back(new Node(*n));
-
-    for (int i = 0; i < copy._node_storage.size(); i++)
-    {
-      auto n_orig = _node_storage[i].get();
-      auto n_copy = copy._node_storage[i].get();
-      // reset each node's dependencies, reconnecting each node to the new copies
-      n_copy->clearDeps();
-      for (auto dep : n_orig->deps())
-        n_copy->needs(copy._node_storage[dep->id()].get());
-    }
-    return copy;
-  }
+  const std::vector<std::unique_ptr<Node>> & storage() { return _node_storage; }
 
 private:
   std::vector<std::unique_ptr<Node>> _node_storage;
 };
+
+void
+Node::unvisitAll()
+{
+  auto & store = _owner->storage();
+  for (int i = 0; i < store.size(); i++)
+    store[i]->_visited = false;
+}
 
 // this effectively implements a topological sort for the nodes in the graph g. returning a list
 // that can be executed that contains groups of nodes that can be run simultaneously.
