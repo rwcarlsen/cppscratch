@@ -152,6 +152,17 @@ public:
     }
   }
 
+  void transitiveDeps(std::set<Node *> & all) const
+  {
+    for (auto d : _deps)
+    {
+      if (all.count(d) > 0)
+        continue;
+      all.insert(d);
+      d->transitiveDeps(all);
+    }
+  }
+
   bool isReducing() const { return _reducing; }
   bool isCached() const { return _cached || _reducing; }
   LoopType loopType() const { return _looptype; }
@@ -301,13 +312,13 @@ public:
   // transitively by the given from nodes.
   bool reachable(std::set<Node *> from)
   {
+    std::set<Node *> transitive_deps;
     for (auto n : from)
-    {
-      if (contains(n))
+      n->transitiveDeps(transitive_deps);
+
+    for (auto n : _nodes)
+      if (transitive_deps.count(n) > 0)
         return true;
-      if (reachable(n->deps()))
-        return true;
-    }
     return false;
   }
 
@@ -317,6 +328,8 @@ public:
   {
     for (auto d : filter(n->dependers()))
     {
+      if (all.count(d) > 0)
+        continue;
       all.insert(d);
       transitiveDependers(d, all);
     }
@@ -328,6 +341,8 @@ public:
   {
     for (auto d : filter(n->deps()))
     {
+      if (all.count(d) > 0)
+        continue;
       all.insert(d);
       transitiveDeps(d, all);
     }
@@ -755,24 +770,6 @@ splitPartitions(std::vector<Subgraph> & partitions)
       splits.push_back(split);
     }
   }
-
-  // This was an alternative approach where we just dup/split out every root and its
-  // deps as a separate subgraph.  I don't think this works well for
-  // larger-scale optimization - we end up splitting graphs into pieces that
-  // otherwise share dependencies and so this would cause redundant/duplicate
-  // calculations to be performed
-  //for (auto & g : partitions)
-  //{
-  //  for (auto lv : g.leaves())
-  //  {
-  //    Subgraph split;
-  //    std::set<Node *> tdeps = {lv};
-  //    g.transitiveDeps(lv, tdeps);
-  //    for (auto n : tdeps)
-  //      split.add(n);
-  //    splits.push_back(split);
-  //  }
-  //}
 
   return splits;
 }
