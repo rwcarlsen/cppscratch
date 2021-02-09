@@ -154,9 +154,12 @@ public:
   std::set<Node *> dependers() const { return _dependers; }
   bool isDepender(Node * n) const
   {
-    std::set<Node *> all;
-    transitiveDependers(all);
-    return all.count(n) > 0;
+    if (_dependers.count(n) > 0)
+      return true;
+    for (auto d : _dependers)
+      if (d->isDepender(n))
+        return true;
+    return false;
   }
   void transitiveDependers(std::set<Node *> & all) const
   {
@@ -547,7 +550,7 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       auto other2 = candidate_merges[j].second;
 
       // swap other1 and other2 nodes so they match up with loop1/loop2 nodes
-      if (loop1->isDepender(other2) || other2->isDepender(loop1) || loop1 == other2)
+      if (loop1 == other2 || loop1->isDepender(other2) || other2->isDepender(loop1))
       {
         auto tmp = other1;
         other1 = other2;
