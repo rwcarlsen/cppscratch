@@ -272,6 +272,9 @@ void caseAutogen1()
   auto start_node = buildTransitionMatrix(m);
   buildGraph(m, start_node, n_walks, sync_blocks);
 
+  //std::cout << dotGraph(m.graph);
+  //return;
+
   auto partitions = computePartitions(m.graph);
   auto loops = computeLoops(partitions);
   mergeSiblings(partitions);
@@ -281,9 +284,7 @@ void caseAutogen1()
       filtered_partitions.push_back(g);
 
   //std::cout << dotGraphMerged(filtered_partitions);
-
   //Subgraph g = m.graph.reachableFrom(start_node);
-  //std::cout << dotGraph(g);
   //printLoops(loops);
 }
 

@@ -107,7 +107,9 @@ bindDep(TransitionMatrix & m, const std::string & node_base, const std::string &
         for (auto depblock : m.candidate_blocks[dep_base])
         {
           auto dep = getNode(m, dep_base, dstcat, depblock);
-          if (srcnode->isDepender(dep))
+          std::set<Node *> dependers;
+          srcnode->transitiveDependers(dependers);
+          if (dependers.count(dep) > 0)
             continue;
           srcnode->needs(dep);
         }
@@ -117,7 +119,9 @@ bindDep(TransitionMatrix & m, const std::string & node_base, const std::string &
         if (haveNode(m, dep_base, dstcat, srcblock))
         {
           auto dep = getNode(m, dep_base, dstcat, srcblock);
-          if (srcnode->isDepender(dep))
+          std::set<Node *> dependers;
+          srcnode->transitiveDependers(dependers);
+          if (dependers.count(dep) > 0)
             continue;
           srcnode->needs(dep);
         }
@@ -216,7 +220,9 @@ walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node 
     for (auto dep : deps)
     {
       // skip/disallow cyclical deps
-      if (n->isDepender(dep))
+      std::set<Node *> dependers;
+      n->transitiveDependers(dependers);
+      if (dependers.count(dep) > 0)
         break;
       if (sync_blocks)
         bindDep(m, n->name(), dep->name());

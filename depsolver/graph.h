@@ -133,11 +133,13 @@ public:
 
   // Returns if this node depends on n (directly or transitively).  reachable must
   // contain a superset of reachable nodes from this node - this is used for
-  // optimization purposes
+  // optimization purposes.
+  //
+  // prepare must have been called once for at least one node in the same
+  // graph as this node before you access this information.
   bool isDepender(Node * n)
   {
-    unvisitAll();
-    return isDependerInner(n);
+    return _transitive_dependers.count(n) > 0;
   }
   void transitiveDependers(std::set<Node *> & all) const
   {
@@ -191,7 +193,8 @@ public:
   // one greater than the maximum loop number of all nodes that depend on this
   // node.
   //
-  // You *MUST* call prepare once right before calling this on a graph's nodes.
+  // prepare must have been called once for at least one node in the same
+  // graph as this node before you access this information.
   int loop()
   {
     if (_loop == -1)
@@ -199,17 +202,38 @@ public:
     return _loop;
   }
 
-  // This is used to set/establish all the loop() numbers for each node.  This
-  // must be called before accessing loop number information for any node in
-  // the full graph this node is a part of.
+  // This is used to set/establish all the loop() numbers and dependers lists for each node in the same graph as this node.
+  // must be called before accessing loop number information or (transitive) depender
+  // information for any node in the same graph as this node.
   void prepare();
 
 private:
-  // This is used as an optimization to mark the graph nodes as "uncomputed"
-  // right before we do expensive calculations.
-  void unvisitAll();
+  // This must be called on every root node right after a prepare call.  And
+  // must be called before you call isDepender.
+  void buildDependers(std::set<Node *> & dependers)
+  {
+    if (_visited)
+      return;
+    _visited = true;
 
-  int loopInner() const {
+    for (auto d : _dependers)
+      d->buildDependers(_transitive_dependers);
+
+    dependers.insert(this);
+    for (auto d : _transitive_dependers)
+      dependers.insert(d);
+  }
+
+  int loopInner() const
+  {
+    //std::cout << "calculating loop for node " << _name << "\n";
+    for (auto d : _dependers)
+    {
+      for (auto dd : d->dependers())
+      {
+        assert(dd != this);
+      }
+    }
     if (_dependers.size() == 0)
       return 0;
 
@@ -235,22 +259,11 @@ private:
     return maxloop;
   }
 
-  bool isDependerInner(Node * n)
-  {
-    if (_visited)
-      return false;
-    _visited = true;
-
-    if (_dependers.count(n) > 0)
-      return true;
-    for (auto d : _dependers)
-      if (d->isDependerInner(n))
-        return true;
-    return false;
-  }
-
   int _loop = -1;
+  std::set<Node *> _transitive_dependers;
+  bool _visited;
   Graph * _owner;
+
   std::string _name;
   int _id = -1;
   bool _cached;
@@ -258,7 +271,6 @@ private:
   LoopType _looptype;
   std::set<Node *> _deps;
   std::set<Node *> _dependers;
-  bool _visited;
 };
 
 class Subgraph
@@ -409,19 +421,22 @@ private:
 };
 
 void
-Node::unvisitAll()
-{
-  auto & store = _owner->storage();
-  for (int i = 0; i < store.size(); i++)
-    store[i]->_visited = false;
-}
-
-void
 Node::prepare()
 {
   auto & store = _owner->storage();
   for (int i = 0; i < store.size(); i++)
+  {
     store[i]->_loop = -1;
+    store[i]->_visited = false;
+    store[i]->_transitive_dependers.clear();
+  }
+
+  std::set<Node *> dummy;
+  for (auto r : _owner->roots())
+    r->buildDependers(dummy);
+
+  for (auto r : _owner->roots())
+    r->loop();
 }
 
 // this effectively implements a topological sort for the nodes in the graph g. returning a list
@@ -487,7 +502,7 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 bool canMerge(Node * a, Node * b)
 {
   // this allows us to consider all Elemental_foo loop types mergeable
-  std::map<LoopCategory, std::set<LoopCategory>> mergeable = {
+  static std::map<LoopCategory, std::set<LoopCategory>> mergeable = {
     {LoopCategory::None, {LoopCategory::None}},
     {LoopCategory::Nodal, {LoopCategory::Nodal}},
     {LoopCategory::Face, {LoopCategory::Face}},
@@ -500,6 +515,8 @@ bool canMerge(Node * a, Node * b)
   if (a == b)
     return false;
   if (mergeable[a->loopType().category].count(b->loopType().category) == 0)
+    return false;
+  if (a->loopType().block != b->loopType().block)
     return false;
   if (a->isDepender(b) || b->isDepender(a))
     return false;
@@ -762,6 +779,7 @@ std::vector<Subgraph>
 computePartitions(Graph & g, bool merge = false)
 {
   (*g.roots().begin())->prepare();
+
   std::vector<Subgraph> partitions;
 
   int maxloop = 0;
