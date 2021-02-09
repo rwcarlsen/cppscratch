@@ -138,20 +138,23 @@ public:
     if (_dependers.size() == 0)
       return 0;
 
-    int maxloop = (*_dependers.begin())->loop();
-    for (auto dep : _dependers)
+    auto depiter = _dependers.begin();
+    int maxloop = (*depiter)->loop();
+    for (; depiter != _dependers.end(); depiter++)
     {
+      auto dep = *depiter;
       // TODO: does the loop number really need to increment if the loop type
       // changes - is this the right logic?
+      auto deploop = dep->loop();
       if (dep->loopType() != loopType() || isReducing())
       {
-        if (dep->loop() + 1 > maxloop)
-          maxloop = dep->loop() + 1;
+        if (deploop + 1 > maxloop)
+          maxloop = deploop + 1;
       }
       else
       {
-        if (dep->loop() > maxloop)
-          maxloop = dep->loop();
+        if (deploop > maxloop)
+          maxloop = deploop;
       }
     }
     return maxloop;
