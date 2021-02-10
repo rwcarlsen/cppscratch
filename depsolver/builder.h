@@ -77,13 +77,15 @@ addNode(TransitionMatrix & m, const std::string & base_name, LoopCategory cat, i
   m.candidates[base_name].push_back(n);
 }
 
-void
+bool
 bindDep(TransitionMatrix & m, const std::string & node_base, const std::string & dep_base, bool allow_missing_dep_blocks = false)
 {
   if (m.candidate_cats.count(node_base) == 0)
     throw std::runtime_error("cannot bind non-existing dependency \"" + node_base + "\" to a dependency");
   if (m.candidate_cats.count(dep_base) == 0)
     throw std::runtime_error("cannot bind node to non-existing dependency \"" + dep_base + "\"");
+
+  std::vector<std::pair<Node *, Node *>> deps_to_add;
   for (auto cat : m.candidate_cats[node_base])
   {
     auto dstcat = cat;
@@ -103,33 +105,36 @@ bindDep(TransitionMatrix & m, const std::string & node_base, const std::string &
     {
       auto srcnode = getNode(m, node_base, cat, srcblock);
       if(m.candidate_reducing.count(dep_base) > 0)
+      {
         // depend on all dep blocks for each src block
         for (auto depblock : m.candidate_blocks[dep_base])
         {
           auto dep = getNode(m, dep_base, dstcat, depblock);
-          std::set<Node *> dependers;
-          srcnode->transitiveDependers(dependers);
-          if (dependers.count(dep) > 0)
-            continue;
+          if (dep->dependsOn(srcnode))
+            return false;
           srcnode->needs(dep);
+          deps_to_add.emplace_back(srcnode, dep);
         }
+      }
       else
       {
         // depend on the same dep block as each src block
         if (haveNode(m, dep_base, dstcat, srcblock))
         {
           auto dep = getNode(m, dep_base, dstcat, srcblock);
-          std::set<Node *> dependers;
-          srcnode->transitiveDependers(dependers);
-          if (dependers.count(dep) > 0)
-            continue;
-          srcnode->needs(dep);
+          if (dep->dependsOn(srcnode))
+            return false;
+          deps_to_add.emplace_back(srcnode, dep);
         }
         else if (!allow_missing_dep_blocks)
           std::runtime_error("cannot bind node " + nodeName(node_base, srcblock, cat) + " to dependency " + dep_base + " not defined on block " + std::to_string(srcblock));
       }
     }
   }
+
+  for (auto pair : deps_to_add)
+    pair.first->needs(pair.second);
+  return true;
 }
 
 void
@@ -217,24 +222,25 @@ walkTransitions(TransitionMatrix & m, std::default_random_engine & engine, Node 
     if (r > prob_sum)
       continue;
 
+    bool binding_worked = true;
     for (auto dep : deps)
     {
       // skip/disallow cyclical deps
-      std::set<Node *> dependers;
-      n->transitiveDependers(dependers);
-      if (dependers.count(dep) > 0)
-        break;
       if (sync_blocks)
-        bindDep(m, n->name(), dep->name());
+        binding_worked = binding_worked && bindDep(m, n->name(), dep->name());
       else
-        n->needs(dep);
+        if (!dep->dependsOn(n))
+          n->needs(dep);
+        else
+          binding_worked = false;
     }
     // we do all the needs/dep-setting calls first at once - to ensure
     // breadth-first generation - this prevents weird dependency conflicts
     // relating to avoiding cyclical dependencies and depending on reducing
     // nodes.
-    for (auto dep : deps)
-      walkTransitions(m, engine, dep, sync_blocks);
+    if (binding_worked)
+      for (auto dep : deps)
+        walkTransitions(m, engine, dep, sync_blocks);
     break;
   }
 }
@@ -254,7 +260,7 @@ buildTransitionMatrix(TransitionMatrix & m)
   std::vector<LoopCategory> elemental = {LoopCategory::Elemental_onElem};
   std::vector<LoopCategory> boundary = {LoopCategory::Elemental_onBoundary};
   std::vector<LoopCategory> nodal = {LoopCategory::Nodal};
-  std::vector<int> blocks = {1, 2, 3};
+  std::vector<int> blocks = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   // vars can be calc'd/used anywhere - any loop type
   generateNodes(m, "Var1", false, false, blocks);
