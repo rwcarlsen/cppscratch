@@ -239,14 +239,6 @@ private:
 
   int loopInner() const
   {
-    //std::cout << "calculating loop for node " << _name << "\n";
-    for (auto d : _dependers)
-    {
-      for (auto dd : d->dependers())
-      {
-        assert(dd != this);
-      }
-    }
     if (_dependers.size() == 0)
       return 0;
 
@@ -290,7 +282,7 @@ class Subgraph
 {
 public:
   Subgraph() {}
-  Subgraph(const std::set<Node *> & nodes) : _nodes(nodes) {}
+  Subgraph(const std::set<Node *> & nodes) : _nodes(nodes), _id(_next_id++) {}
 
   // Returns the minimum number of jumps it takes to get from any root node of
   // the dependency graph to this node.
@@ -415,9 +407,12 @@ private:
     return filtered;
   }
 
+  static int _next_id;
   int _id;
   std::set<Node *> _nodes;
 };
+
+int Subgraph::_next_id = 0;
 
 class Graph : public Subgraph
 {
