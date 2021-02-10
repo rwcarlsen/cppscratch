@@ -300,6 +300,12 @@ public:
     }
     return min;
   }
+
+  void prepare()
+  {
+    if (_nodes.size() > 0)
+      (*_nodes.begin())->prepare();
+  }
   // returns true if any nodes in this graph are reachable from or dependend on
   // transitively by the given from nodes.
   bool reachable(std::set<Node *> from)
@@ -582,6 +588,8 @@ mergeSiblings(std::vector<Subgraph> & partitions)
         node_to_loopnode[node]->needs(node_to_loopnode[dep]);
       }
 
+  graphgraph.prepare();
+
   // determine the set of potential merges.
   std::vector<std::pair<Node *, Node *>> candidate_merges;
   std::map<Node *, std::map<Node *, bool>> merge_index;
@@ -772,7 +780,7 @@ splitPartitions(std::vector<Subgraph> & partitions)
 std::vector<Subgraph>
 computePartitions(Graph & g, bool merge = false)
 {
-  (*g.roots().begin())->prepare();
+  g.prepare();
 
   std::vector<Subgraph> partitions;
 
