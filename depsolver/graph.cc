@@ -32,58 +32,58 @@ bool canMerge(Node * a, Node * b)
 
 Node::Node(Graph * g, const std::string & name, bool cached, bool reducing, LoopType l)
     : _owner(g), _name(name), _cached(cached), _reducing(reducing), _looptype(l)
+{
+}
+
+std::set<Node *> Node::deps() const { return _deps; }
+std::set<Node *> Node::dependers() const { return _dependers; }
+
+bool Node::dependsOn(Node * n)
+{
+  return n->_transitive_dependers.count(this) > 0;
+}
+void Node::transitiveDependers(std::set<Node *> & all) const
+{
+  all.insert(_transitive_dependers.begin(), _transitive_dependers.end());
+}
+
+void Node::transitiveDeps(std::set<Node *> & all) const
+{
+  for (auto d : _deps)
   {
+    if (all.count(d) > 0)
+      continue;
+    all.insert(d);
+    d->transitiveDeps(all);
   }
+}
 
-  std::set<Node *> Node::deps() const { return _deps; }
-  std::set<Node *> Node::dependers() const { return _dependers; }
+bool Node::isReducing() const { return _reducing; }
+bool Node::isCached() const { return _cached || _reducing; }
+LoopType Node::loopType() const { return _looptype; }
 
-  bool Node::dependsOn(Node * n)
-  {
-    return n->_transitive_dependers.count(this) > 0;
-  }
-  void Node::transitiveDependers(std::set<Node *> & all) const
-  {
-    all.insert(_transitive_dependers.begin(), _transitive_dependers.end());
-  }
+std::string Node::str() { return _name; }
+std::string Node::name() { return _name; }
 
-  void Node::transitiveDeps(std::set<Node *> & all) const
-  {
-    for (auto d : _deps)
-    {
-      if (all.count(d) > 0)
-        continue;
-      all.insert(d);
-      d->transitiveDeps(all);
-    }
-  }
+void Node::clearDeps() {_deps.clear(); _dependers.clear();}
 
-  bool Node::isReducing() const { return _reducing; }
-  bool Node::isCached() const { return _cached || _reducing; }
-  LoopType Node::loopType() const { return _looptype; }
+int Node::id() {return _id;}
 
-  std::string Node::str() { return _name; }
-  std::string Node::name() { return _name; }
+void Node::setId(int id)
+{
+  if (_id != -1)
+    throw std::runtime_error("setting node id multiple times");
+  if (id == -1)
+    throw std::runtime_error("cannot set node id to -1");
+  _id = id;
+}
 
-  void Node::clearDeps() {_deps.clear(); _dependers.clear();}
-
-  int Node::id() {return _id;}
-
-  void Node::setId(int id)
-  {
-    if (_id != -1)
-      throw std::runtime_error("setting node id multiple times");
-    if (id == -1)
-      throw std::runtime_error("cannot set node id to -1");
-    _id = id;
-  }
-
-  int Node::loop()
-  {
-    if (_loop == -1)
-      _loop = loopInner();
-    return _loop;
-  }
+int Node::loop()
+{
+  if (_loop == -1)
+    _loop = loopInner();
+  return _loop;
+}
 
 void
 Node::prepare()
@@ -97,49 +97,49 @@ Node::prepare()
 }
 
 
-  void Node::inheritDependers(Node * n, std::set<Node *> & dependers)
+void Node::inheritDependers(Node * n, std::set<Node *> & dependers)
+{
+  assert(dependers.count(this) == 0);
+  if (n->_visit_count == _n_visits)
+    return;
+  n->_visit_count = _n_visits;
+
+  _transitive_dependers.insert(n);
+  _transitive_dependers.insert(dependers.begin(), dependers.end());
+  assert(_transitive_dependers.count(this) == 0);
+
+  for (auto d : _deps)
+    d->inheritDependers(n, dependers);
+}
+
+int Node::loopInner()
+{
+  if (_dependers.size() == 0)
+    return 0;
+
+  assert(_transitive_dependers.count(this) == 0);
+
+  auto depiter = _dependers.begin();
+  int maxloop = (*depiter)->loop();
+  for (; depiter != _dependers.end(); depiter++)
   {
-    assert(dependers.count(this) == 0);
-    if (n->_visit_count == _n_visits)
-      return;
-    n->_visit_count = _n_visits;
-
-    _transitive_dependers.insert(n);
-    _transitive_dependers.insert(dependers.begin(), dependers.end());
-    assert(_transitive_dependers.count(this) == 0);
-
-    for (auto d : _deps)
-      d->inheritDependers(n, dependers);
-  }
-
-  int Node::loopInner()
-  {
-    if (_dependers.size() == 0)
-      return 0;
-
-    assert(_transitive_dependers.count(this) == 0);
-
-    auto depiter = _dependers.begin();
-    int maxloop = (*depiter)->loop();
-    for (; depiter != _dependers.end(); depiter++)
+    auto dep = *depiter;
+    // TODO: does the loop number really need to increment if the loop type
+    // changes - is this the right logic?
+    auto deploop = dep->loop();
+    if (dep->loopType() != loopType() || isReducing())
     {
-      auto dep = *depiter;
-      // TODO: does the loop number really need to increment if the loop type
-      // changes - is this the right logic?
-      auto deploop = dep->loop();
-      if (dep->loopType() != loopType() || isReducing())
-      {
-        if (deploop + 1 > maxloop)
-          maxloop = deploop + 1;
-      }
-      else
-      {
-        if (deploop > maxloop)
-          maxloop = deploop;
-      }
+      if (deploop + 1 > maxloop)
+        maxloop = deploop + 1;
     }
-    return maxloop;
+    else
+    {
+      if (deploop > maxloop)
+        maxloop = deploop;
+    }
   }
+  return maxloop;
+}
 
 void
 execOrder(Subgraph g, std::vector<std::vector<Node *>> & order)
@@ -201,6 +201,14 @@ mergeSiblings(std::vector<Subgraph> & partitions)
     auto loop_node = graphgraph.create("loop" + std::to_string(i), false, false, (*part.nodes().begin())->loopType());
     assert(loop_node != nullptr);
     loopnode_to_partition[loop_node] = i;
+    // TODO: this mapping is not quite right.  It is possible (because of
+    // uncached nodes) that a given node n can exist in multiple partitions -
+    // when this is the case, the node to loopnode mapping here will be
+    // overwritten - the last partition having that node "wins" and the
+    // mapping will point to that loop_node/partition.  This causes the
+    // partitions for which this node mapping was overwritten to have missing
+    // loop/partition dependencies. We need to fix this to make the map key be
+    // partition and node specific - not just keyed off of node pointers.
     for (auto n : part.nodes())
       node_to_loopnode[n] = loop_node;
   }
