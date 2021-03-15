@@ -132,7 +132,11 @@ public:
   // contain a superset of reachable nodes from this node - this is used for
   // optimization purposes.
   bool dependsOn(Node * n);
+
+  // Stores in all every node that depends on this node transitively.
   void transitiveDependers(std::set<Node *> & all) const;
+
+  // Stores in all every node that this node depends on transitively.
   void transitiveDeps(std::set<Node *> & all) const;
 
   bool isReducing() const;
@@ -173,12 +177,13 @@ public:
   // graph as this node before you access this information.
   int loop();
 
-  // This is used to set/establish all the loop() numbers and dependers lists for each node in the same graph as this node.
-  // must be called before accessing loop number information or (transitive) depender
-  // information for any node in the same graph as this node.
+  // This is used to precalculate all the loop() numbers for each node in the same graph as this node.
+  // must be called before accessing loop number information for any node in the same graph as this node.
   void prepare();
 
 private:
+  // Allows incrementally building up the transitive dependers/deps lists for every
+  // node as new dependencies are added between nodes.
   void inheritDependers(Node * n, std::set<Node *> & dependers);
   int loopInner();
 
@@ -221,6 +226,7 @@ public:
     return min;
   }
 
+  // This calls prepare for all nodes in the graph (not just this subgraph).
   void prepare()
   {
     if (_nodes.size() > 0)
