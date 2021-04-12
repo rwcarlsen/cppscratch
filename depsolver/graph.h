@@ -398,6 +398,10 @@ bool canMerge(Node * a, Node * b);
 // executable order.
 void mergeSiblings(std::vector<Subgraph> & partitions);
 
+// This merges all pairs of partitions together for which one is a subset of
+// the other - i.e. all nodes of one partitions exist in the other partition.
+void mergeSubsets(std::vector<Subgraph> & partitions);
+
 // takes subgraphs passed in and splits them each into all unconnected
 // subgraphs.
 std::vector<Subgraph> splitPartitions(std::vector<Subgraph> & partitions);

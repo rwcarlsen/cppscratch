@@ -189,6 +189,87 @@ floodUp(Node * n, Subgraph & g, LoopType t, int curr_loop)
 }
 
 void
+performMerges(std::vector<Subgraph> & partitions, std::set<std::pair<size_t, size_t>> merges)
+{
+  // To do this, we create a
+  // parallel set of pointers to the original partitions that we modify/use to
+  // make sure consecutive merges of partitions pairs accumulate correctly
+  // into single subgraphs - i.e. merging partition 1 and 2 and then later
+  // merging partitions 2 and 3 results in a single subgraph representing all
+  // nodes for partitions 1, 2, and 3.
+  std::vector<Subgraph *> merged_partitions(partitions.size());
+  for (size_t i = 0; i < partitions.size(); i++)
+    merged_partitions[i] = &partitions[i];
+  for (auto & merge : merges)
+  {
+    auto part1_index = merge.first;
+    auto part2_index = merge.second;
+
+    // check if previous mergers already caused these two original partitions to become merged;
+    // only merge if this wasn't the case.
+    if (merged_partitions[part1_index] != merged_partitions[part2_index])
+      merged_partitions[part1_index]->merge(*merged_partitions[part2_index]);
+
+    // when two partitions are merged, we need to set the subgraph pointer in both
+    // original partitions point to the same subghraph.  Then further merges that
+    // may be with already merged partitions can also be placed into the same
+    // already-merged subrgraph.  As merges accumulate, we need to keep all
+    // these original-partition subgraph entries pointing to the correct
+    // single, merged subgraph.
+    for (size_t i = 0; i < merged_partitions.size(); i++)
+    {
+      // check if prior merges resulted in the current two partitions already being merged.
+      // In this case. we don't want to clear out any subgraphs - if we did
+      // then we could end up the nodes in the merged partitions being deleted!
+      if (merged_partitions[part1_index] == merged_partitions[part2_index])
+        break;
+      if (i == (size_t)part1_index)
+        continue;
+      if (merged_partitions[i] == merged_partitions[part2_index])
+      {
+        // clear out the partition we merged "from" so that it has zero nodes
+        // and we know to remove it from our main partition list/vector once
+        // we are done merging.
+        merged_partitions[i]->clear();
+        merged_partitions[i] = merged_partitions[part1_index];
+      }
+    }
+  }
+
+  // remove the empty partitions that we merged away into other partitions.
+  for (auto it = partitions.begin(); it != partitions.end();)
+    if (it->nodes().size() == 0)
+      it = partitions.erase(it);
+    else
+      ++it;
+}
+
+void
+mergeSubsets(std::vector<Subgraph> & partitions)
+{
+  std::set<std::pair<size_t, size_t>> merges;
+  for (int i = 0; i < partitions.size(); i++)
+  {
+    for (int j = 0; j < partitions.size(); j++)
+    {
+      if (i == j || merges.count(std::make_pair(i, j)) > 0 ||
+          merges.count(std::make_pair(j, i)) > 0)
+        continue;
+      bool canmerge = true;
+      for (auto n : partitions[i].nodes())
+        if (!partitions[j].contains(n))
+        {
+          canmerge = false;
+          break;
+        }
+      if (canmerge)
+        merges.insert(std::make_pair(i, j));
+    }
+  }
+  performMerges(partitions, merges);
+}
+
+void
 mergeSiblings(std::vector<Subgraph> & partitions)
 {
   // create a graph where each node represents one of the total dep graph partitions
@@ -337,61 +418,18 @@ mergeSiblings(std::vector<Subgraph> & partitions)
       canceled_merges.insert(cancel);
   }
 
-  // map the merges back into an updated set of new partitions
-  // with all the (non-meta) actual objects as nodes.  To do this, we create a
-  // parallel set of pointers to the original partitions that we modify/use to
-  // make sure consecutive merges of partitions pairs accumulate correctly
-  // into single subgraphs - i.e. merging partition 1 and 2 and then later
-  // merging partitions 2 and 3 results in a single subgraph representing all
-  // nodes for partitions 1, 2, and 3.
-  std::vector<Subgraph *> merged_partitions(partitions.size());
-  for (int i = 0; i < partitions.size(); i++)
-    merged_partitions[i] = &partitions[i];
+  // perform the actual partition merges
+  std::set<std::pair<size_t, size_t>> final_merges;
   for (auto merge_index : chosen_merges)
   {
     auto & merge = sorted_merges[merge_index];
     auto loop1 = merge.first;
     auto loop2 = merge.second;
-    auto part1_index = loopnode_to_partition[loop1];
-    auto part2_index = loopnode_to_partition[loop2];
-
-    // check if previous mergers already caused these two original partitions to become merged;
-    // only merge if this wasn't the case.
-    if (merged_partitions[part1_index] != merged_partitions[part2_index])
-      merged_partitions[part1_index]->merge(*merged_partitions[part2_index]);
-
-    // when two partitions are merged, we need to set the subgraph pointer in both
-    // original partitions point to the same subghraph.  Then further merges that
-    // may be with already merged partitions can also be placed into the same
-    // already-merged subrgraph.  As merges accumulate, we need to keep all
-    // these original-partition subgraph entries pointing to the correct
-    // single, merged subgraph.
-    for (int i = 0; i < merged_partitions.size(); i++)
-    {
-      // check if prior merges resulted in the current two partitions already being merged.
-      // In this case. we don't want to clear out any subgraphs - if we did
-      // then we could end up the nodes in the merged partitions being deleted!
-      if (merged_partitions[part1_index] == merged_partitions[part2_index])
-        break;
-      if (i == part1_index)
-        continue;
-      if (merged_partitions[i] == merged_partitions[part2_index])
-      {
-        // clear out the partition we merged "from" so that it has zero nodes
-        // and we know to remove it from our main partition list/vector once
-        // we are done merging.
-        merged_partitions[i]->clear();
-        merged_partitions[i] = merged_partitions[part1_index];
-      }
-    }
+    auto part1_index = loopnode_to_partition[merge.first];
+    auto part2_index = loopnode_to_partition[merge.second];
+    final_merges.insert(std::make_pair(part1_index, part2_index));
   }
-
-  // remove the empty partitions that we merged away into other partitions.
-  for (auto it = partitions.begin(); it != partitions.end();)
-    if (it->nodes().size() == 0)
-      it = partitions.erase(it);
-    else
-      ++it;
+  performMerges(partitions, final_merges);
 }
 
 std::vector<Subgraph>
@@ -459,17 +497,6 @@ computePartitions(Graph & g, bool merge)
       partitions.push_back(entry.second);
   }
 
-  // add/pull in uncached dependencies transitively for each loop type.
-  // This is necessary, because initially each node is assigned only a
-  // single loop-number/subgraph.  So we need to duplicate (uncached) nodes
-  // that are depended on by nodes in different loops into each of those
-  // loops (i.e. material properties).  Cached dependencies do not need to
-  // be duplicated since nodes are initially assigned to the highest loop
-  // number (ie. deepest/earliest loop) they are needed in.
-  for (auto & g : partitions)
-    for (auto n : g.leaves())
-      floodUp(n, g, n->loopType(), n->loop());
-
   // TODO: decide which way:
   //
   // We need further split each of these loops/partitions into
@@ -507,6 +534,18 @@ computePartitions(Graph & g, bool merge)
 
   if (merge)
     mergeSiblings(partitions);
+
+  // add/pull in uncached dependencies transitively for each loop type.
+  // This is necessary, because initially each node is assigned only a
+  // single loop-number/subgraph.  So we need to duplicate (uncached) nodes
+  // that are depended on by nodes in different loops into each of those
+  // loops (i.e. material properties).  Cached dependencies do not need to
+  // be duplicated since nodes are initially assigned to the highest loop
+  // number (ie. deepest/earliest loop) they are needed in.
+  for (auto & g : partitions)
+    for (auto n : g.leaves())
+      floodUp(n, g, n->loopType(), n->loop());
+
   return partitions;
 }
 
